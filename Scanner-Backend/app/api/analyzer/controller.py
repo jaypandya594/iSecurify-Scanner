@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.db.models import ScanSummary, ScanScoreHistory
@@ -404,6 +405,7 @@ def calculate_and_store_summary(db: Session, org_id: str, target: str, raw_data:
         domain=root_domain,
         domain_score=scoring["domain_score"],
         result=history_result,
+        scan_date=datetime.now(timezone.utc),
     )
     db.add(score_history)
 

@@ -29,7 +29,7 @@ def _validate_domain_dns(domain: str) -> tuple[bool, str]:
         return False, f"Could not resolve '{domain}'. Verify the domain name is correct."
 
 
-def create_scan_task_to_queue(db: Session, domain: str, org_id: str):
+async def create_scan_task_to_queue(db: Session, domain: str, org_id: str):
     try:
         domain = domain.strip().lower()
         if not domain:
@@ -61,7 +61,7 @@ def create_scan_task_to_queue(db: Session, domain: str, org_id: str):
             "target": domain
         }
 
-        redis_client.PushToQueue(data=scan_job)
+        await redis_client.PushToQueue(data=scan_job)
 
         active_scan = db.query(ActiveScan).filter(
             ActiveScan.domain == domain,

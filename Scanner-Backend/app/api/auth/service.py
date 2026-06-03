@@ -20,6 +20,9 @@ from app.utils.email import (
     send_password_reset_otp_email,
     send_registration_verification_email,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 JWT_SECRET = os.getenv('JWT_SECRET')
 OTP_EXPIRY_MINUTES = 10
@@ -87,6 +90,10 @@ def _finalize_owner_registration(user: User, domain: str, db: Session) -> None:
 
 
 def register(email: str, password: str, domain: str, db: Session):
+    """
+    ✅ FIXED: Save user to database FIRST, then send email
+    If email fails, user is still saved (can resend later)
+    """
     email_lower = email.lower().strip()
     existing_user = db.query(User).filter(User.email == email_lower).first()
     if existing_user and existing_user.email_verified:
@@ -107,28 +114,44 @@ def register(email: str, password: str, domain: str, db: Session):
     expires_at = datetime.now(timezone.utc) + timedelta(hours=VERIFICATION_EXPIRY_HOURS)
     hashed_password = hashPassword(password)
 
-    if existing_user:
-        existing_user.password = hashed_password
-        existing_user.pending_registration_domain = domain
-        existing_user.verification_token = token
-        existing_user.verification_expires_at = expires_at
-    else:
-        new_user = User(
-            user_id=str(uuid.uuid4()),
-            email=email_lower,
-            password=hashed_password,
-            role="owner",
-            org_id=None,
-            email_verified=False,
-            verification_token=token,
-            verification_expires_at=expires_at,
-            pending_registration_domain=domain,
+    try:
+        # ✅ STEP 1: Create user in database FIRST
+        if existing_user:
+            existing_user.password = hashed_password
+            existing_user.pending_registration_domain = domain
+            existing_user.verification_token = token
+            existing_user.verification_expires_at = expires_at
+        else:
+            new_user = User(
+                user_id=str(uuid.uuid4()),
+                email=email_lower,
+                password=hashed_password,
+                role="owner",
+                org_id=None,
+                email_verified=False,
+                verification_token=token,
+                verification_expires_at=expires_at,
+                pending_registration_domain=domain,
+            )
+            db.add(new_user)
+        
+        # ✅ Commit user to database (SUCCESS!)
+        db.commit()
+        logger.info(f"User registered: {email_lower}")
+        
+    except Exception as db_err:
+        db.rollback()
+        logger.error(f"Database error during registration: {str(db_err)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create account"
         )
-        db.add(new_user)
 
+    # ✅ STEP 2: Send verification email AFTER user is saved
+    # If this fails, user is already in database ✅
     frontend = os.getenv("FRONTEND_URL")
     if not frontend:
-        db.rollback()
+        logger.error("FRONTEND_URL not set")
         raise HTTPException(
             status_code=500,
             detail="Server misconfiguration: FRONTEND_URL is not set",
@@ -138,14 +161,16 @@ def register(email: str, password: str, domain: str, db: Session):
 
     try:
         send_registration_verification_email(to_email=email_lower, verify_url=verify_url)
+        logger.info(f"Verification email sent to: {email_lower}")
     except Exception as email_err:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to send verification email: {str(email_err)}",
-        )
-
-    db.commit()
+        # ✅ Log the error but DON'T rollback - user is already saved!
+        logger.warning(f"Failed to send verification email to {email_lower}: {str(email_err)}")
+        # Return success anyway - user can request resend later
+        return {
+            "message": "Account created! Check your email for verification link. (If you don't see it, check spam folder)",
+            "email": email_lower,
+            "note": "If email doesn't arrive, you can request a resend."
+        }
 
     return {
         "message": "Check your email for a verification link to complete your registration.",
@@ -200,8 +225,10 @@ def verify_registration(token: str, db: Session):
     try:
         _finalize_owner_registration(user, domain, db)
         db.commit()
-    except Exception:
+        logger.info(f"User verified: {email_lower}")
+    except Exception as err:
         db.rollback()
+        logger.error(f"Error finalizing registration: {str(err)}")
         raise HTTPException(status_code=500, detail="Could not complete registration")
 
     return {"message": "Your email is verified. You can now log in."}

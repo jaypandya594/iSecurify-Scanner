@@ -248,9 +248,24 @@ function Profile() {
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
   const getInitials = (email) => {
-    return email ? email.substring(0, 2).toUpperCase() : "??";
-  };
+  if (!email) return "??";
 
+  // Remove domain part
+  const username = email.split("@")[0];
+
+  // Split by dot, underscore, hyphen, or space
+  const parts = username.split(/[._-\s]+/);
+
+  // If multiple parts like tejas.solanki
+  if (parts.length >= 2) {
+    return (
+      parts[0][0] + parts[parts.length - 1][0]
+    ).toUpperCase();
+  }
+
+  // Single name fallback
+  return username.substring(0, 2).toUpperCase();
+};
   if (profileLoading) {
     return (
       <div className="flex h-full items-center justify-center">

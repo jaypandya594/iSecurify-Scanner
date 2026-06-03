@@ -441,7 +441,11 @@ function NewScan() {
                   className="flex-shrink-0 flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300 disabled:shadow-none"
                 >
                   <span>{isScanRunning ? "Scan Running" : "Initialize Scan"}</span>
-                  <span className="material-symbols-outlined text-[18px]">
+                  <span
+                    className={`material-symbols-outlined text-[18px] ${
+                      isScanRunning ? "animate-spin" : ""
+                    }`}
+                  >
                     {isScanRunning ? "progress_activity" : "bolt"}
                   </span>
                 </button>
@@ -457,28 +461,25 @@ function NewScan() {
 
         {/* Dynamic Progress Bar */}
         {isScanRunning && (
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-8 shadow-sm transition-all duration-500">
-            <div className="flex justify-between items-center mb-4">
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-8 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <span className="material-symbols-outlined animate-spin text-indigo-600">progress_activity</span>
+                <span className="material-symbols-outlined animate-spin text-indigo-600">
+                  progress_activity
+                </span>
                 Active Scan in Progress
               </h3>
-              <span className="text-2xl font-black text-indigo-600">{scanProgress}%</span>
+
+              <span className="text-xl font-bold text-indigo-600">
+                {scanProgress}%
+              </span>
             </div>
 
-            <div className="w-full h-5 bg-indigo-100 rounded-full overflow-hidden shadow-inner relative">
+            <div className="w-full h-3 bg-indigo-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-300 ease-out flex items-center justify-end"
+                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${scanProgress}%` }}
-              >
-                <div className="h-full w-20 bg-white/20 animate-[scanSweep_1.5s_linear_infinite]" />
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-600">
-                {scanProgress === 100 ? "Scan completed successfully." : "Awaiting scan results..."}
-              </p>
+              />
             </div>
           </div>
         )}

@@ -26,3 +26,26 @@ class FixResultRequest(BaseModel):
     domain: str
     fix_type: str
     result: Any
+from pydantic import BaseModel
+
+
+# class CreateFixRequest(BaseModel):
+
+#     scan_id: str
+
+#     org_id: str
+
+#     user_id: str | None = None
+
+#     domain: str
+
+#     host: str
+
+#     port_number: int
+
+#     service: str | None = None
+class PortFixRequestSchema(BaseModel):
+    org_id: str
+    domain: str
+    fix_type: str
+    data: dict

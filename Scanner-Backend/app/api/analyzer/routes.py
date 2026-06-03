@@ -1,3 +1,4 @@
+from datetime import timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.db.base import get_db
@@ -127,7 +128,11 @@ def get_score_history(
             "domain": item.domain,
             "domain_score": item.domain_score,
             "result": item.result or {},
-            "scan_date": item.scan_date.isoformat() if item.scan_date else None,
+            "scan_date": (
+                item.scan_date.astimezone(timezone.utc).isoformat()
+                if item.scan_date and item.scan_date.tzinfo is not None
+                else item.scan_date.isoformat() if item.scan_date else None
+            ),
         }
         for item in history
     ]

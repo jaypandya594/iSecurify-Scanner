@@ -14,6 +14,8 @@ from app.api.fix.routes import router as fix_router
 from app.api.admin.routes import router as admin_router
 from app.api.malware.routes import router as malware_router
 from app.db.base import SessionLocal
+from app.api.fix.routes import router as fix_router 
+
 app = FastAPI()
 
 # Initialize database on startup
@@ -52,6 +54,7 @@ app.include_router(fix_router)
 app.include_router(admin_router)
 app.include_router(webhook_scanner_router)
 app.include_router(malware_router)
+app.include_router(fix_router)
 
 if __name__ == "__main__":
     import uvicorn

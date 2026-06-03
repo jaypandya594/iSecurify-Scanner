@@ -24,8 +24,7 @@ async def register_scan_task(
     domain = request.domain.strip().lower()
     org_id = user.org_id
 
-    result = create_scan_task_to_queue(db, domain, org_id)
-
+    result = await create_scan_task_to_queue(db, domain, org_id)
     if isinstance(result, dict) and result.get("domain_validation"):
         await ws_manager.send(org_id, {
             "event": "domain_validation",

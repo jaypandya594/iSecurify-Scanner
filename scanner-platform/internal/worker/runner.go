@@ -8,32 +8,62 @@ import (
 
 	"scanner-platform/internal/models"
 	"scanner-platform/scanner-engine/core"
+	"scanner-platform/scanner-engine/fix"
 	"scanner-platform/scanner-engine/scanners/collection"
 	"scanner-platform/scanner-engine/scanners/discovery"
 	"scanner-platform/scanner-engine/scanners/filters"
-
-	"scanner-platform/scanner-engine/fix"
 )
 
 func RunFix(ctx context.Context, job *models.FixScanJob) (any, error) {
+
 	null := models.FixScanResult{}
 
+	log.Println("================================")
+	log.Println("Received fix job")
+	log.Println("================================")
+
+	log.Printf("Scan ID: %s", job.ScanID)
+	log.Printf("Domain: %s", job.Domain)
+	log.Printf("Fix Type: %s", job.FixType)
+
 	log.Printf("Fix started: %s (%s)", job.ScanID, job.Domain)
+
 	result := models.FixScanResult{}
 	var err error
 
 	if job.FixType == "port" {
+
+		fmt.Println("================================")
+		fmt.Println("Processing fix request")
+		fmt.Println("================================")
+
 		fmt.Println("Fix Port-Scanner Running...")
+
+		fmt.Println("Running verification")
+
 		result, err = fix.PortFix(ctx, job)
 		if err != nil {
+			log.Println("Fix failed:", err)
 			return null, err
 		}
+
+		fmt.Println("Verification completed")
 		fmt.Println("Fix Port-Scanner Completed.")
 	}
+
+	// ========================================
+	// SEND WEBHOOK
+	// ========================================
+
+	fmt.Println("Sending webhook result")
+
 	res, err := send_fix_result_webhook(result)
 	if err != nil {
+		log.Println("Webhook failed:", err)
 		return nil, err
 	}
+
+	fmt.Println("Fix workflow completed successfully")
 
 	return res, nil
 }
@@ -66,6 +96,7 @@ func RunMain(ctx context.Context, job *models.ScanJob) (any, error) {
 		Event:  "subdomain_discovery_completed",
 		Status: "completed",
 	}
+
 	discovery_res, err := send_webhook_notification(discovery_payload)
 	if err != nil {
 		log.Printf("Failed to send webhook notification: %v", err)
@@ -94,6 +125,7 @@ func RunMain(ctx context.Context, job *models.ScanJob) (any, error) {
 		Event:  "subdomain_filter_completed",
 		Status: "completed",
 	}
+
 	filter_res, err := send_webhook_notification(filter_payload)
 	if err != nil {
 		log.Printf("Failed to send webhook notification: %v", err)
@@ -132,12 +164,6 @@ func RunMain(ctx context.Context, job *models.ScanJob) (any, error) {
 
 	fmt.Println("Total Results Found:", len(collection_data_results.Data.(map[string]interface{})), collection_res)
 
-	// data := []any{}
-
-	// for _, res := range collection_data_results.Data.([]interface{}) {
-	// 	data = append(data, res)
-	// }
-
 	scanResult := models.ScanResult{
 		ScanID:    job.ScanID,
 		Target:    job.Target,
@@ -145,7 +171,9 @@ func RunMain(ctx context.Context, job *models.ScanJob) (any, error) {
 		Data:      collection_data_results.Data,
 		Timestamp: time.Now(),
 	}
-	fmt.Println("Final Results:", len(scanResult.Data.(map[string]interface{})["subdomains"].([]interface{})))
+
+	fmt.Println("Final Results:",
+		len(scanResult.Data.(map[string]interface{})["subdomains"].([]interface{})))
 
 	res, err := send_scan_result_webhook(scanResult)
 	if err != nil {

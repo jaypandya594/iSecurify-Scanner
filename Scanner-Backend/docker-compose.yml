@@ -30,14 +30,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgresql://postgres:Tejas%402584@postgres:5432/scanner-db
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - QUTTERA_API_KEY=${QUTTERA_API_KEY}
       - JWT_SECRET=${JWT_SECRET}
       - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY}
       - QUTTERA_BASE_URL=${QUTTERA_BASE_URL}
-      - FRONTEND_URL=${FRONTEND_URL}
+      - FRONTEND_URL= http://localhost:5173/
       - SMTP_SERVER=${SMTP_SERVER}
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USER=${SMTP_USER}

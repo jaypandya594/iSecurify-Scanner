@@ -14,7 +14,7 @@ func main() {
 	ctx := context.Background()
 	addr := os.Getenv("REDIS_ADDR")
 	if addr == "" {
-		addr = "redis:6379"
+		addr = "localhost:6379"
 	}
 	scan_type := os.Getenv("WORKER_TYPE")
 	if scan_type == "" {

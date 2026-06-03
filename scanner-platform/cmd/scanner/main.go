@@ -12,18 +12,21 @@ import (
 )
 
 func main() {
+
 	ctx := context.Background()
-	// domain_name := "vulnweb.com"
-	domain_name := "officebeacon.com"
-	// domain_name := "allianzcloud.com"
-	// domain_name := "flowzstaffing.com"
+
+	domain_name := "www.isecurify.co"
 
 	fmt.Println("Starting scanning for domain:", domain_name)
+
+	// =====================================
+	// DISCOVERY
+	// =====================================
+
 	fmt.Println("Scanner 1 : Subdomain Discovery")
 
 	registry := core.NewRegistry()
 
-	// registry.Register(discovery.NewDNSScanner())
 	registry.Register(discovery.NewCrtCTScanner())
 	registry.Register(discovery.NewCertSpotterCTScanner())
 	registry.Register(discovery.NewSubdomainBruteforceScanner())
@@ -32,93 +35,102 @@ func main() {
 	pipeline := core.NewDiscoveryPipeline(registry)
 
 	results, err := pipeline.ExecuteDiscoveryScanner(ctx, domain_name)
-
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("Total Subdomains Found:", len(results.Data.([]string)))
+	discoveryData, ok := results.Data.([]string)
+	if !ok {
+		panic("invalid discovery result format")
+	}
+
+	fmt.Println("Total Subdomains Found:", len(discoveryData))
+
+	// =====================================
+	// FILTER
+	// =====================================
 
 	fmt.Println("Scanner 2 : Subdomain Filter")
 
-	filter_registry := core.NewFilterScannerRegistry()
+	filterRegistry := core.NewFilterScannerRegistry()
 
-	filter_registry.RegisterFilterScanner(filters.NewDedupFilter())
-	filter_registry.RegisterFilterScanner(filters.NewDNSFilter())
-	// filter_registry.RegisterFilterScanner(filters.NewHTTPFilter())
+	filterRegistry.RegisterFilterScanner(filters.NewDedupFilter())
+	filterRegistry.RegisterFilterScanner(filters.NewDNSFilter())
 
-	// filter_registry.RegisterFilterScanner(filters.NEWDNSTEST()) // test dns
+	filterPipeline := core.NewFilterPipeline(filterRegistry)
 
-	filter_pipeline := core.NewFilterPipeline(filter_registry)
+	filteredResults, err := filterPipeline.ExecuteFilterScanners(
+		ctx,
+		results,
+		domain_name,
+	)
 
-	filtered_results, err := filter_pipeline.ExecuteFilterScanners(ctx, results, domain_name)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("Total Filtered Subdomains Found:", len(filtered_results.Data.([]interface{})))
+	filterData, ok := filteredResults.Data.([]any)
+	if !ok {
+		panic("invalid filtered result format")
+	}
+
+	fmt.Println("Total Filtered Subdomains Found:", len(filterData))
+
+	// =====================================
+	// COLLECTION
+	// =====================================
 
 	fmt.Println("Scanner 3 : Data Collection")
 
-	collection_registry := core.NewCollectionRegistry()
+	collectionRegistry := core.NewCollectionRegistry()
 
-	collection_registry.RegisterCollectionScanner(collection.NewDNSDataOutput())
-	collection_registry.RegisterCollectionScanner(collection.NewHTTPXFilterOutput())
-	collection_registry.RegisterCollectionScanner(collection.NewPortFilter())
-	collection_registry.RegisterCollectionScanner(collection.NewServiceDetectionScanner())
-	collection_registry.RegisterCollectionScanner(collection.NewTLSDataCollection())
-	// collection_registry.RegisterCollectionScanner(collection.NewMailSecurityDataCollection())
+	collectionRegistry.RegisterCollectionScanner(collection.NewDNSDataOutput())
+	collectionRegistry.RegisterCollectionScanner(collection.NewHTTPXFilterOutput())
+	collectionRegistry.RegisterCollectionScanner(collection.NewPortFilter())
+	collectionRegistry.RegisterCollectionScanner(collection.NewServiceDetectionScanner())
+	collectionRegistry.RegisterCollectionScanner(collection.NewTLSDataCollection())
 
-	collection_pipeline := core.NewCollectionPipeline(collection_registry)
+	collectionPipeline := core.NewCollectionPipeline(collectionRegistry)
 
-	collection_pipeline_results, err := collection_pipeline.ExecuteCollectionScanenrs(ctx, filtered_results, domain_name)
+	collectionResults, err := collectionPipeline.ExecuteCollectionScanenrs(
+		ctx,
+		filteredResults,
+		domain_name,
+	)
+
 	if err != nil {
 		panic(err)
 	}
 
-	for _, r := range collection_pipeline_results.Data.([]interface{}) {
+	collectionData, ok := collectionResults.Data.([]any)
+	if !ok {
+		panic("invalid collection result format")
+	}
+
+	// =====================================
+	// OUTPUT
+	// =====================================
+
+	for _, r := range collectionData {
 
 		data, err := json.MarshalIndent(r, "", "  ")
 		if err != nil {
-			fmt.Println("error:", err)
+			fmt.Println("marshal error:", err)
 			continue
 		}
 
 		fmt.Println(string(data))
 	}
+	// =====================================
+	// PORT RESCAN TEST
+	// =====================================
 
-	// dataMap, ok := collection_pipeline_results.Data.(map[string]interface{})
-	// if !ok {
-	// 	fmt.Println("Invalid data format")
-	// 	return
-	// }
+	fmt.Println("\nTesting Single Port Rescan")
 
-	// // -------- HOST --------
-	// if host, ok := dataMap["host"]; ok {
+	rescanResult := RescanSinglePort(
+		"officebeacon.com",
+		80,
+	)
 
-	// 	hostJSON, err := json.MarshalIndent(host, "", "  ")
-	// 	if err != nil {
-	// 		fmt.Println("host marshal error:", err)
-	// 	} else {
-	// 		fmt.Println("===== HOST =====")
-	// 		fmt.Println(string(hostJSON))
-	// 	}
-	// }
-
-	// // -------- SUBDOMAINS --------
-	// if subs, ok := dataMap["subdomains"].([]interface{}); ok {
-
-	// 	fmt.Println("===== SUBDOMAINS =====")
-
-	// 	for _, r := range subs {
-
-	// 		data, err := json.MarshalIndent(r, "", "  ")
-	// 		if err != nil {
-	// 			fmt.Println("error:", err)
-	// 			continue
-	// 		}
-
-	// 		fmt.Println(string(data))
-	// 	}
-	// }
+	fmt.Println(rescanResult)
 }

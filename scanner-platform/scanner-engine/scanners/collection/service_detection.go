@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"scanner-platform/scanner-engine/analysis"
 	"scanner-platform/scanner-engine/core"
 )
 
@@ -48,7 +49,10 @@ func (s *ServiceDetectionScanner) RunCollectionScanner(
 		return subdomains, fmt.Errorf("invalid data format")
 	}
 
-	// ✅ STEP 1: Normalize + Group
+	// =========================================================
+	// STEP 1: Normalize + Group Hosts by Port Combination
+	// =========================================================
+
 	for _, item := range data {
 
 		m, ok := item.(map[string]any)
@@ -63,25 +67,30 @@ func (s *ServiceDetectionScanner) RunCollectionScanner(
 
 		rawPorts, exists := m["port_collection"]
 		if !exists || rawPorts == nil {
-			continue // 🔥 avoid panic
+			continue
 		}
 
 		var ports []core.PortData
 
-		// ✅ HANDLE BOTH TYPES
+		// HANDLE MULTIPLE TYPES SAFELY
 		switch v := rawPorts.(type) {
 
 		case []core.PortData:
 			ports = v
 
 		case []interface{}:
+
 			for _, p := range v {
+
 				pm, ok := p.(map[string]interface{})
 				if !ok {
 					continue
 				}
 
-				portFloat, _ := pm["port"].(float64)
+				portFloat, ok := pm["port"].(float64)
+				if !ok {
+					continue
+				}
 
 				ports = append(ports, core.PortData{
 					Port: int(portFloat),
@@ -96,8 +105,9 @@ func (s *ServiceDetectionScanner) RunCollectionScanner(
 			continue
 		}
 
-		// build port list
+		// BUILD PORT LIST
 		var portList []string
+
 		for _, p := range ports {
 			portList = append(portList, fmt.Sprintf("%d", p.Port))
 		}
@@ -106,89 +116,173 @@ func (s *ServiceDetectionScanner) RunCollectionScanner(
 
 		grouped[key] = append(grouped[key], sub)
 
-		// 🔥 store normalized ports back
+		// STORE NORMALIZED PORTS BACK
 		m["port_collection"] = ports
 	}
 
-	// ✅ STEP 2: Run Nmap per group
+	// =========================================================
+	// STEP 2: RUN NMAP PER HOST
+	// =========================================================
+
 	for key, hosts := range grouped {
 
 		portList := string(key)
 
-		fmt.Println("Running Nmap:", hosts, "ports:", portList)
+		for _, host := range hosts {
 
-		cmd := exec.CommandContext(
-			ctx,
-			"nmap",
-			"-p", portList,
-			"-sV",
-			"--min-rate", "1000",
-			"-T4",
-			"-Pn",
-			"--max-retries", "3",
-			"--script", "banner",
-			"-oX", "-",
-		)
+			fmt.Println("=================================================")
+			fmt.Println("Starting Nmap Scan")
+			fmt.Println("Host :", host)
+			fmt.Println("Ports:", portList)
+			fmt.Println("=================================================")
 
-		cmd.Args = append(cmd.Args, hosts...)
+			// HARD TIMEOUT
+			nmapCtx, cancel := context.WithTimeout(ctx, 40*time.Second)
 
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			fmt.Println("nmap error:", err)
-			fmt.Println(string(out))
-			continue
-		}
+			cmd := exec.CommandContext(
+				nmapCtx,
+				"nmap",
+				"-Pn",
+				"-n",
+				"-T4",
+				"-sV",
+				"-p", portList,
+				"--host-timeout", "30s",
+				"--max-retries", "1",
+				"--min-rate", "1000",
+				"-oX", "-",
+				host,
+			)
 
-		var result core.NmapRun
-		if err := xml.Unmarshal(out, &result); err != nil {
-			fmt.Println("xml parse error:", err)
-			continue
-		}
+			out, err := cmd.CombinedOutput()
 
-		// ✅ STEP 3: Map results back
-		for _, h := range result.Hosts {
+			cancel()
 
-			var host string
+			if err != nil {
 
-			if len(h.Hostnames) > 0 {
-				host = h.Hostnames[0].Name
-			} else if len(h.Addresses) > 0 {
-				host = h.Addresses[0].Addr
-			} else {
+				fmt.Println("Nmap Error on Host:", host)
+				fmt.Println("Error:", err)
+
+				if len(out) > 0 {
+					fmt.Println(string(out))
+				}
+
 				continue
 			}
 
-			for _, item := range data {
+			fmt.Println("Finished Nmap:", host)
 
-				m := item.(map[string]any)
-				sub, _ := m["subdomain"].(string)
+			// =====================================================
+			// STEP 3: PARSE XML OUTPUT
+			// =====================================================
 
-				if sub != host {
+			var result core.NmapRun
+
+			if err := xml.Unmarshal(out, &result); err != nil {
+
+				fmt.Println("XML Parse Error:", err)
+
+				if len(out) > 0 {
+					fmt.Println(string(out))
+				}
+
+				continue
+			}
+
+			// =====================================================
+			// STEP 4: MAP RESULTS BACK
+			// =====================================================
+
+			for _, h := range result.Hosts {
+
+				var resultHost string
+
+				if len(h.Hostnames) > 0 {
+
+					resultHost = h.Hostnames[0].Name
+
+				} else if len(h.Addresses) > 0 {
+
+					resultHost = h.Addresses[0].Addr
+
+				} else {
 					continue
 				}
 
-				ports, ok := m["port_collection"].([]core.PortData)
-				if !ok {
-					continue
-				}
+				for _, item := range data {
 
-				for i := range ports {
-					for _, p := range h.Ports {
+					m, ok := item.(map[string]any)
+					if !ok {
+						continue
+					}
 
-						if p.PortID == ports[i].Port &&
-							p.State.State == "open" {
+					sub, _ := m["subdomain"].(string)
 
-							ports[i].Service = p.Service.Name
-							ports[i].Product = p.Service.Product
-							ports[i].Version = p.Service.Version
+					if sub != resultHost {
+						continue
+					}
+
+					ports, ok := m["port_collection"].([]core.PortData)
+					if !ok {
+						continue
+					}
+
+					// ================================================
+					// OPEN PORT ANALYSIS
+					// ================================================
+
+					var openPorts []int
+
+					for i := range ports {
+
+						for _, p := range h.Ports {
+
+							if p.PortID == ports[i].Port &&
+								p.State.State == "open" {
+
+								ports[i].Service = p.Service.Name
+								ports[i].Product = p.Service.Product
+								ports[i].Version = p.Service.Version
+
+								openPorts = append(openPorts, ports[i].Port)
+							}
 						}
 					}
-				}
 
-				m["port_collection"] = ports
+					// ================================================
+					// SECURITY ANALYSIS
+					// ================================================
+
+					for _, port := range openPorts {
+
+						finding := analysis.AnalyzePort(host, port)
+
+						finding.Recommendation =
+							analysis.GenerateRecommendation(port)
+
+						finding.Verification =
+							analysis.VerifyPort(host, port)
+
+						fmt.Println("================================")
+						fmt.Println("Host:", finding.Host)
+						fmt.Println("Port:", finding.Port)
+						fmt.Println("Service:", finding.Service)
+						fmt.Println("Severity:", finding.Severity)
+						fmt.Println("Risk:", finding.Risk)
+						fmt.Println("Recommendation:", finding.Recommendation)
+						fmt.Println("Verification:", finding.Verification)
+						fmt.Println("================================")
+					}
+
+					m["port_collection"] = ports
+				}
 			}
 		}
 	}
+
+	// =========================================================
+	// FINAL RESULT
+	// =========================================================
 
 	return core.Result{
 		Scanner:   s.Name(),

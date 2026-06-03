@@ -277,11 +277,18 @@ export function saveAssessment(body, token) {
 
 // ─── Fix (port verification queue) ───────────────────────────────────────────
 
-export function submitFix({ org_id, domain, fix_type, data }, token) {
-  return request("/fix/submit", {
+// ─── Fix (port verification queue) ───────────────────────────────────────────
+
+export function submitFix(data, token) {
+  return request("/fix/port", {
     method: "POST",
-    body: { org_id, domain, fix_type, data },
+    body: data,
     token,
   });
 }
+
+export function getFixStatus(scanId, token) {
+  return request(`/fix/status/${scanId}`, { token });
+}
+
 

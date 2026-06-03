@@ -1,8 +1,10 @@
 import uuid
-from sqlalchemy import Column, String, Text, Integer, Boolean, ForeignKey, TIMESTAMP, Index
+from datetime import datetime, timezone
+from sqlalchemy import Column, String, Text, Integer, Boolean, ForeignKey, TIMESTAMP, Index, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from app.db.base import Base
+import enum
 
 class Organization(Base):
     __tablename__ = "organizations"
@@ -107,7 +109,7 @@ class ScanScoreHistory(Base):
     domain = Column(Text, nullable=False)
     domain_score = Column(Integer, nullable=False)
     result = Column(JSONB, nullable=True)
-    scan_date = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+    scan_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class MalwareScanResult(Base):
@@ -133,3 +135,77 @@ class ActiveScan(Base):
     status = Column(String(50), nullable=False, default="pending")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
+
+class PortFixRequest(Base):
+    __tablename__ = "port_fix_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    scan_id = Column(String(255), nullable=False)
+
+    org_id = Column(
+        String(36),
+        ForeignKey("organizations.org_id"),
+        nullable=False
+    )
+
+    user_id = Column(
+        String(36),
+        ForeignKey("users.user_id"),
+        nullable=True
+    )
+
+    domain = Column(
+        Text,
+        ForeignKey("scan_summary.domain"),
+        nullable=False
+    )
+
+    host = Column(String(255), nullable=False)
+
+    port_number = Column(Integer, nullable=False)
+
+    service = Column(String(255), nullable=True)
+
+    fix_type = Column(
+        String(50),
+        nullable=False,
+        default="port"
+    )
+
+    status = Column(
+        String(50),
+        nullable=False,
+        default="pending"
+    )
+
+    is_open = Column(Boolean, nullable=True)
+
+    created_at = Column(
+        TIMESTAMP,
+        server_default=func.now()
+    )
+
+    verification_scan_time = Column(
+        TIMESTAMP,
+        nullable=True
+    )
+
+    updated_at = Column(
+        TIMESTAMP,
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_portfix_scan", "scan_id"),
+        Index("idx_portfix_org", "org_id"),
+        Index("idx_portfix_domain", "domain"),
+        Index("idx_portfix_status", "status"),
+    )
+class FixStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"   
+    

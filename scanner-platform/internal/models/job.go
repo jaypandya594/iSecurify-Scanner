@@ -9,20 +9,25 @@ type ScanJob struct {
 	Progress int    `json:"progress,omitempty"`
 }
 
+type FixData struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
 type FixScanJob struct {
-	ScanID  string `json:"scan_id"`
-	Domain  string `json:"domain"`
-	FixType string `json:"fix_type"` // e.g., "port", "vulnerability", etc.
-	Data    any    `json:"data"`     // Additional data needed for the fix, e.g., port number
+	ScanID  string  `json:"scan_id"`
+	OrgID   string  `json:"org_id"`
+	Domain  string  `json:"domain"`
+	FixType string  `json:"fix_type"`
+	Data    FixData `json:"data"`
 }
 
 type FixScanResult struct {
-	ScanID  string `json:"scan_id"`
-	Domain  string `json:"domain"`
-	FixType string `json:"fix_type"`
-	Result  any    `json:"result"` // Result of the fix operation, e.g., success/failure or details
+	ScanID string      `json:"scan_id"`
+	Domain string      `json:"domain"`
+	Status string      `json:"status"`
+	Data   interface{} `json:"data"`
 }
-
 type ScanNotification struct {
 	ScanID string `json:"scan_id"`
 	Target string `json:"target"`
