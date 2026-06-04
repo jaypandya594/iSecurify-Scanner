@@ -97,14 +97,14 @@ function Sidebar({ isOpen, onToggle, isDarkMode, onToggleDarkMode }) {
 
   return (
     <aside
-      className={`relative flex h-full shrink-0 flex-col overflow-hidden border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 transition-all duration-300 ${isOpen ? "w-72 px-6 py-8" : "w-0 border-r-0 px-0 py-0"
+      className={`relative flex h-full shrink-0 flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 transition-all duration-300 ${isOpen ? "w-72 overflow-visible px-6 py-8 pr-8" : "w-0 overflow-hidden border-r-0 px-0 py-0"
         }`}
       aria-hidden={!isOpen}
     >
       <button
         type="button"
         onClick={onToggle}
-        className={`absolute top-8 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-sm transition hover:border-indigo-200 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:text-indigo-700 dark:hover:text-indigo-400 ${isOpen ? "right-[-22px]" : "right-[-56px]"
+        className={`absolute top-6 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-sm transition hover:border-indigo-200 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:text-indigo-700 dark:hover:text-indigo-400 ${isOpen ? "right-[-18px]" : "right-[-52px]"
           }`}
         aria-label={isOpen ? "Close sidebar" : "Open sidebar"}
       >
