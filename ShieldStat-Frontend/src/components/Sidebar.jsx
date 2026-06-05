@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import logo from "../assets/logo.svg";
 import ResetPasswordModal from "./ResetPasswordModal";
+import { logoutAndRedirect } from "../utils/auth";
 
 function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
   const location = useLocation();
@@ -83,13 +84,8 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    localStorage.removeItem("scannedDomains");
-    localStorage.removeItem("lastScannedDomain");
-    localStorage.removeItem("malware_last_scan");
     setIsSettingsOpen(false);
-    navigate("/auth");
+    logoutAndRedirect();
   };
 
   const baseClass =
