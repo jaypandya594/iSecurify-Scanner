@@ -98,6 +98,30 @@ def get_promo_codes(db: Session) -> list[dict]:
     ]
 
 
+def delete_promo_code(code_str: str, db: Session) -> dict:
+    """Delete a promo code by its code string (both used and unused codes can be deleted)."""
+    promo = db.query(PromoCode).filter(PromoCode.code == code_str).first()
+
+    if not promo:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+
+    if promo.is_used and promo.used_by:
+        user = db.query(User).filter(User.user_id == promo.used_by).first()
+        if user and user.org_id:
+            org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+            if org:
+                current_domains = len(org.domain or [])
+                org.max_domains = max(1, org.max_domains - 1, current_domains)
+
+    db.delete(promo)
+    db.commit()
+
+    return {
+        "message": "Promo code deleted successfully",
+        "code": promo.code,
+    }
+
+
 def get_users_by_org(db: Session) -> dict:
     organizations = db.query(Organization).order_by(Organization.domain.asc()).all()
     users = (

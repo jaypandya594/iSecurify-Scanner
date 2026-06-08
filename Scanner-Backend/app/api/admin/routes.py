@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest
 from app.api.admin.service import (
     block_email,
+    delete_promo_code,
     generate_promo_code,
     get_blacklisted_emails,
     get_promo_codes,
@@ -34,6 +35,16 @@ def list_promo_codes(
     _current_admin: User = Depends(require_admin),
 ):
     return get_promo_codes(db)
+
+
+@router.delete("/promo-codes/{code}/delete")
+def delete_promo(
+    code: str,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    """Delete a promo code (both used and unused codes can be deleted)"""
+    return delete_promo_code(code, db)
 
 
 @router.get("/users")

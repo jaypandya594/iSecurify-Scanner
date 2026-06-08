@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { generatePromoCode, getPromoCodes } from "../services/api";
+import { deletePromoCode, generatePromoCode, getPromoCodes } from "../services/api";
 
 const INITIAL_PLANS = [
    {
@@ -53,6 +53,8 @@ function AdminSubscription() {
    const [editingPlanId, setEditingPlanId] = useState(null);
    const [editingData, setEditingData] = useState(null);
    const [savingPlan, setSavingPlan] = useState(false);
+   const [deletingPromoCode, setDeletingPromoCode] = useState(null);
+   const [deletingPromoLoading, setDeletingPromoLoading] = useState(false);
 
    const showNotification = (text, type = "success") => {
       setNotification({ text, type });
@@ -90,6 +92,31 @@ function AdminSubscription() {
       } finally {
          setGeneratingPromo(false);
       }
+   };
+
+   const handleDeletePromoCode = async (promoCode) => {
+      setDeletingPromoLoading(true);
+      try {
+         // Call API to delete promo code (both used and unused can be deleted)
+         await deletePromoCode(promoCode, localStorage.getItem("token"));
+
+         const updatedCodes = promoCodes.filter(code => code.code !== promoCode);
+         setPromoCodes(updatedCodes);
+         showNotification(`Promo code ${promoCode} deleted successfully`);
+         setDeletingPromoCode(null);
+      } catch (err) {
+         showNotification(err.message || "Failed to delete promo code", "error");
+      } finally {
+         setDeletingPromoLoading(false);
+      }
+   };
+
+   const confirmDeletePromoCode = (promoCode) => {
+      setDeletingPromoCode(promoCode);
+   };
+
+   const cancelDeletePromoCode = () => {
+      setDeletingPromoCode(null);
    };
 
    const handleEditPlan = (planId) => {
@@ -192,9 +219,9 @@ function AdminSubscription() {
                         </div>
                      )}
                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 ${plan.color === 'primary' ? 'bg-primary-container/30 text-primary' :
-                           plan.color === 'tertiary' ? 'bg-tertiary-container/30 text-tertiary' :
-                              plan.color === 'secondary' ? 'bg-secondary-container/30 text-secondary' :
-                                 'bg-outline-variant/10 text-outline-variant'
+                        plan.color === 'tertiary' ? 'bg-tertiary-container/30 text-tertiary' :
+                           plan.color === 'secondary' ? 'bg-secondary-container/30 text-secondary' :
+                              'bg-outline-variant/10 text-outline-variant'
                         }`}>
                         <span className="material-symbols-outlined">{plan.icon}</span>
                      </div>
@@ -202,9 +229,9 @@ function AdminSubscription() {
                         {plan.name}
                      </h3>
                      <p className={`text-3xl font-black mb-4 ${plan.color === 'primary' ? 'text-primary' :
-                           plan.color === 'tertiary' ? 'text-tertiary' :
-                              plan.color === 'secondary' ? 'text-secondary' :
-                                 'text-on-surface'
+                        plan.color === 'tertiary' ? 'text-tertiary' :
+                           plan.color === 'secondary' ? 'text-secondary' :
+                              'text-on-surface'
                         }`}>
                         ${plan.price}
                         <span className="text-sm font-medium text-on-surface-variant">
@@ -233,6 +260,49 @@ function AdminSubscription() {
                   </div>
                ))}
             </div>
+
+            {/* Delete Promo Code Confirmation Modal */}
+            {deletingPromoCode && (
+               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                  <div className="bg-surface rounded-3xl shadow-2xl w-full max-w-sm">
+                     <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-surface-container">
+                        <h2 className="text-xl font-black text-on-surface">Delete Promo Code?</h2>
+                     </div>
+
+                     <div className="px-6 py-6 sm:px-8">
+                        <p className="text-on-surface-variant text-sm mb-4">
+                           Are you sure you want to delete the promo code <span className="font-bold text-on-surface">{deletingPromoCode}</span>? This action cannot be undone.
+                        </p>
+                     </div>
+
+                     <div className="px-6 py-5 sm:px-8 sm:py-6 border-t border-surface-container flex gap-3 flex-col sm:flex-row justify-end">
+                        <button
+                           onClick={cancelDeletePromoCode}
+                           className="px-6 py-2 rounded-xl bg-surface-container text-on-surface hover:bg-surface-container/80 transition-all font-semibold text-sm"
+                        >
+                           Cancel
+                        </button>
+                        <button
+                           onClick={() => handleDeletePromoCode(deletingPromoCode)}
+                           disabled={deletingPromoLoading}
+                           className="px-6 py-2 rounded-xl bg-red-500 text-white font-semibold text-sm shadow-lg shadow-red-500/20 hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                           {deletingPromoLoading ? (
+                              <>
+                                 <span className="material-symbols-outlined text-sm animate-spin">refresh</span>
+                                 Deleting...
+                              </>
+                           ) : (
+                              <>
+                                 <span className="material-symbols-outlined text-sm">delete</span>
+                                 Delete
+                              </>
+                           )}
+                        </button>
+                     </div>
+                  </div>
+               </div>
+            )}
 
             {/* Edit Plan Modal */}
             {editingPlanId && editingData && (
@@ -375,6 +445,7 @@ function AdminSubscription() {
                                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
                                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Used At</th>
                                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Used By</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Action</th>
                                  </tr>
                               </thead>
                               <tbody className="divide-y divide-surface-container">
@@ -390,6 +461,15 @@ function AdminSubscription() {
                                        </td>
                                        <td className="px-6 py-4 text-sm text-on-surface-variant">{code.used_at ? new Date(code.used_at).toLocaleDateString("en-GB") : "—"}</td>
                                        <td className="px-6 py-4 text-sm font-semibold text-on-surface">{code.used_by || "—"}</td>
+                                       <td className="px-6 py-4">
+                                          <button
+                                             onClick={() => confirmDeletePromoCode(code.code)}
+                                             className="px-3 py-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all flex items-center gap-1 text-xs font-semibold whitespace-nowrap"
+                                          >
+                                             <span className="material-symbols-outlined text-sm">delete</span>
+                                             <span className="hidden sm:inline">Delete</span>
+                                          </button>
+                                       </td>
                                     </tr>
                                  ))}
                               </tbody>
