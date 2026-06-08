@@ -210,28 +210,28 @@ function AdminUsers() {
         </div>
       )}
 
-      <div className="p-10 space-y-10">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-0 py-4 sm:py-6 lg:py-8">
         {/* Header Section */}
-        <div className="flex items-end justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-4xl font-black text-on-surface tracking-tight mb-2">
+            <h2 className="mb-2 text-2xl font-black tracking-tight text-on-surface sm:text-3xl lg:text-4xl">
               User Management
             </h2>
-            <p className="text-on-surface-variant max-w-md">
+            <p className="max-w-2xl text-sm text-on-surface-variant sm:text-base">
               Orchestrate access levels, monitor subscriptions, and manage
               high-level security permissions across the enterprise.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button 
               onClick={() => setActiveTab("users")}
-              className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition-all ${activeTab === "users" ? "bg-primary text-white shadow-lg" : "bg-surface-container text-on-surface hover:bg-surface-container-high"}`}
+              className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${activeTab === "users" ? "bg-primary text-white shadow-lg" : "bg-surface-container text-on-surface hover:bg-surface-container-high"}`}
             >
               Organizations
             </button>
             <button 
                onClick={() => setActiveTab("blacklist")}
-               className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition-all ${activeTab === "blacklist" ? "bg-red-600 text-white shadow-lg" : "bg-surface-container text-on-surface hover:bg-surface-container-high"}`}
+               className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${activeTab === "blacklist" ? "bg-red-600 text-white shadow-lg" : "bg-surface-container text-on-surface hover:bg-surface-container-high"}`}
             >
               Blacklist
             </button>
@@ -239,7 +239,7 @@ function AdminUsers() {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
           <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm group flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 rounded-lg bg-primary-container/30 flex items-center justify-center text-primary">
@@ -285,15 +285,15 @@ function AdminUsers() {
 
         {activeTab === "users" && (
             <>
-            <div className="grid grid-cols-12 gap-8">
-              <div className="col-span-12 bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm border border-surface-container">
-                <div className="px-8 py-6 border-b border-surface-container flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
+              <div className="col-span-1 xl:col-span-12 bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm border border-surface-container">
+                <div className="px-4 py-5 border-b border-surface-container flex flex-col gap-4 sm:px-6 sm:py-6 lg:px-8 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <h3 className="text-xl font-bold text-on-surface">Platform administrators</h3>
                     
                   </div>
                 </div>
-                <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-2 lg:gap-10 lg:p-8">
                   <div>
                     <h4 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">
                       Current admins
@@ -356,9 +356,9 @@ function AdminUsers() {
             </div>
 
             {/* Registered Entities Table */}
-            <div className="grid grid-cols-12 gap-8">
-            <div className="col-span-12 xl:col-span-12 bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm">
-                <div className="px-8 py-6">
+            <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
+            <div className="col-span-1 xl:col-span-12 bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm">
+                <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
                 <h3 className="text-xl font-bold">Organizations &amp; Users</h3>
                 </div>
                 
@@ -367,7 +367,7 @@ function AdminUsers() {
                         No organizations found.
                     </div>
                 ) : (
-                    <div className="p-4 space-y-6">
+                    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
                     {organizations.map((org) => {
                         const ownerEmail = org.users?.find(u => u.role === "owner")?.email || org.users?.[0]?.email || "Unknown";
                         const isExpanded = !!expandedOrgs[org.org_id];
@@ -376,8 +376,9 @@ function AdminUsers() {
                         <div key={org.org_id} className="border border-surface-container rounded-2xl overflow-hidden bg-white">
                             <button 
                                 onClick={() => toggleOrg(org.org_id)}
-                                className="w-full bg-surface-container-low px-6 py-4 flex justify-between items-center border-b border-surface-container hover:bg-surface-container transition-colors cursor-pointer text-left"
+                                className="w-full border-b border-surface-container bg-surface-container-low px-4 py-4 text-left transition-colors hover:bg-surface-container sm:px-6"
                             >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                                         <span className="material-symbols-outlined">person</span>
@@ -391,17 +392,19 @@ function AdminUsers() {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-6 items-center">
-                                    <div className="flex flex-col text-right hidden sm:flex">
-                                        <span className="text-[10px] uppercase font-bold text-on-surface-variant tracking-wider mb-1">Max Domains</span>
-                                        <span className="text-sm font-semibold">{org.max_domains || 1}</span>
+                                <div className="flex items-center gap-3 sm:gap-6">
+                                    <div className="flex flex-col text-left sm:text-right">
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-on-surface-variant">Max Domains</span>
+                                        <span className="text-sm font-semibold text-on-surface">{org.max_domains || 1}</span>
                                     </div>
-                                    <div className="w-8 h-8 rounded-full bg-surface border border-surface-variant flex items-center justify-center text-on-surface-variant">
+                                    <div className="flex items-center gap-2 rounded-full border border-surface-variant bg-surface px-3 py-2 text-sm font-semibold text-on-surface-variant shadow-sm sm:px-3">
+                                        <span>Details</span>
                                         <span className={`material-symbols-outlined transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
                                             expand_more
                                         </span>
                                     </div>
                                 </div>
+                              </div>
                             </button>
                             {isExpanded && (
                             <div className="overflow-x-auto bg-white animate-in slide-in-from-top-2 fade-in duration-200 border-t border-surface-container">
@@ -530,11 +533,11 @@ function AdminUsers() {
         )}
 
         {activeTab === "blacklist" && (
-            <div className="grid grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
                 {/* Users list (block/unblock) */}
-                <div className="col-span-12 xl:col-span-6 space-y-8">
+                <div className="col-span-1 xl:col-span-6 space-y-8">
                     <div className="bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm border border-surface-container">
-                        <div className="px-8 py-6 border-b border-surface-container">
+                        <div className="border-b border-surface-container px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
                             <h3 className="text-xl font-bold">Users</h3>
                             <p className="text-xs text-on-surface-variant mt-1">
                               Block or unblock users directly.
@@ -558,7 +561,7 @@ function AdminUsers() {
                           ) : (
                             <ul className="divide-y divide-surface-container">
                               {filteredUsers.map((u) => (
-                                <li key={`${u.user_id ?? u.email}-${u.org_id ?? "platform"}`} className="px-8 py-4 flex items-center justify-between gap-4">
+                                <li key={`${u.user_id ?? u.email}-${u.org_id ?? "platform"}`} className="flex flex-col gap-4 px-4 py-4 sm:px-6 sm:flex-row sm:items-center sm:justify-between">
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                       <span className="text-sm font-semibold text-on-surface truncate">
@@ -588,12 +591,12 @@ function AdminUsers() {
                                     </div>
                                   </div>
 
-                                  <div className="shrink-0">
+                                  <div className="w-full shrink-0 sm:w-auto">
                                     {u.is_blacklisted ? (
                                       <button
                                         type="button"
                                         onClick={() => handleUnblockEmail(u.email)}
-                                        className="px-4 py-2 bg-white border border-slate-200 text-sm font-semibold rounded-lg hover:border-emerald-200 hover:text-emerald-700 hover:bg-emerald-50 transition-all disabled:opacity-60"
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold transition-all hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-60 sm:w-auto"
                                         disabled={blocking}
                                       >
                                         Unblock
@@ -602,7 +605,7 @@ function AdminUsers() {
                                       <button
                                         type="button"
                                         onClick={() => handleBlockUser(u.email)}
-                                        className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-red-700 transition-all disabled:opacity-60"
+                                        className="w-full rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-700 disabled:opacity-60 sm:w-auto"
                                         disabled={blocking}
                                       >
                                         Block
@@ -618,8 +621,8 @@ function AdminUsers() {
                 </div>
 
                 {/* List */}
-                <div className="col-span-12 xl:col-span-6 bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm">
-                    <div className="px-8 py-6 border-b border-surface-container">
+                <div className="col-span-1 xl:col-span-6 bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm">
+                    <div className="border-b border-surface-container px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
                         <h3 className="text-xl font-bold text-red-600">Blacklisted Emails</h3>
                         <p className="text-xs text-on-surface-variant mt-1">Currently blocked identities.</p>
                         <div className="mt-4">

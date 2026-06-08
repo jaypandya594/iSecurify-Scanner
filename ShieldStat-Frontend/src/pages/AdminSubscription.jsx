@@ -166,14 +166,14 @@ function AdminSubscription() {
             </div>
          )}
 
-         <div className="p-10 space-y-10">
+         <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-0 py-4 sm:py-6 lg:py-8">
             {/* Header */}
-            <div className="flex items-end justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                <div>
-                  <h2 className="text-4xl font-black text-on-surface tracking-tight mb-2">
+                  <h2 className="mb-2 text-2xl font-black tracking-tight text-on-surface sm:text-3xl lg:text-4xl">
                      Subscription Management
                   </h2>
-                  <p className="text-on-surface-variant max-w-md">
+                  <p className="max-w-2xl text-sm text-on-surface-variant sm:text-base">
                      Define service tiers, adjust pricing models, manage enterprise
                      features, and generate promotional codes.
                   </p>
@@ -181,153 +181,169 @@ function AdminSubscription() {
             </div>
 
             {/* Pricing Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
                {plans.map((plan) => (
-                  <div
-                     key={plan.id}
-                     className={`p-6 rounded-3xl shadow-sm border-2 transition-all relative overflow-hidden group ${editingPlanId === plan.id
-                           ? "border-primary/50 bg-primary/5"
-                           : plan.popular
-                              ? "border-primary/10 bg-surface-container-lowest hover:border-primary/30"
-                              : "border-surface-container bg-surface-container-lowest hover:border-primary/30"
-                        }`}
-                  >
-                     {plan.popular && !editingPlanId && (
+                  <div key={plan.id} className="bg-surface-container-lowest p-6 rounded-3xl shadow-sm relative overflow-hidden group flex flex-col h-full">
+                     {plan.popular && (
                         <div className="absolute top-0 right-0 p-4">
                            <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded-lg uppercase">
                               Popular
                            </span>
                         </div>
                      )}
-
-                     {editingPlanId === plan.id ? (
-                        // Edit Mode
-                        <div className="space-y-4">
-                           <div>
-                              <label className="text-xs font-bold uppercase text-on-surface-variant block mb-1">
-                                 Plan Name
-                              </label>
-                              <input
-                                 type="text"
-                                 value={editingData.name}
-                                 onChange={(e) => handleNameChange(e.target.value)}
-                                 className="w-full bg-surface-container px-3 py-2 rounded-lg border border-surface-container text-sm font-semibold text-on-surface focus:outline-none focus:border-primary"
-                              />
+                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 ${plan.color === 'primary' ? 'bg-primary-container/30 text-primary' :
+                           plan.color === 'tertiary' ? 'bg-tertiary-container/30 text-tertiary' :
+                              plan.color === 'secondary' ? 'bg-secondary-container/30 text-secondary' :
+                                 'bg-outline-variant/10 text-outline-variant'
+                        }`}>
+                        <span className="material-symbols-outlined">{plan.icon}</span>
+                     </div>
+                     <h3 className="text-xl font-black text-on-surface mb-1">
+                        {plan.name}
+                     </h3>
+                     <p className={`text-3xl font-black mb-4 ${plan.color === 'primary' ? 'text-primary' :
+                           plan.color === 'tertiary' ? 'text-tertiary' :
+                              plan.color === 'secondary' ? 'text-secondary' :
+                                 'text-on-surface'
+                        }`}>
+                        ${plan.price}
+                        <span className="text-sm font-medium text-on-surface-variant">
+                           /mo
+                        </span>
+                     </p>
+                     <div className="space-y-3 mb-8 flex-1">
+                        {plan.features.map((feature, idx) => (
+                           <div key={idx} className="flex items-center gap-2 text-xs font-medium text-on-surface-variant">
+                              <span className="material-symbols-outlined text-emerald-500 text-sm">
+                                 check_circle
+                              </span>
+                              {feature}
                            </div>
+                        ))}
+                     </div>
 
-                           <div>
-                              <label className="text-xs font-bold uppercase text-on-surface-variant block mb-1">
-                                 Price ($/month)
-                              </label>
-                              <input
-                                 type="number"
-                                 value={editingData.price}
-                                 onChange={(e) => handlePriceChange(e.target.value)}
-                                 className="w-full bg-surface-container px-3 py-2 rounded-lg border border-surface-container text-sm font-semibold text-on-surface focus:outline-none focus:border-primary"
-                                 min="0"
-                              />
-                           </div>
+                     {/* Edit Button - Bottom Right */}
+                     <button
+                        onClick={() => handleEditPlan(plan.id)}
+                        className="self-end mt-auto px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-all flex items-center gap-1 text-sm font-semibold"
+                     >
+                        <span className="material-symbols-outlined text-sm">edit</span>
+                        <span className="hidden sm:inline">Edit</span>
+                     </button>
+                  </div>
+               ))}
+            </div>
 
-                           <div>
-                              <label className="text-xs font-bold uppercase text-on-surface-variant block mb-2">
+            {/* Edit Plan Modal */}
+            {editingPlanId && editingData && (
+               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+                  <div className="bg-surface rounded-3xl shadow-2xl w-full max-w-2xl my-8">
+                     <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-surface-container">
+                        <h2 className="text-2xl font-black text-on-surface">Edit {editingData.name} Plan</h2>
+                     </div>
+
+                     <div className="px-6 py-6 sm:px-8 space-y-6 max-h-[calc(100vh-300px)] overflow-y-auto">
+                        {/* Plan Name */}
+                        <div>
+                           <label className="block text-sm font-bold text-on-surface-variant mb-2">
+                              Plan Name
+                           </label>
+                           <input
+                              type="text"
+                              value={editingData.name}
+                              onChange={(e) => handleNameChange(e.target.value)}
+                              className="w-full px-4 py-3 rounded-xl border border-surface-container bg-surface-container-low text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                              placeholder="Enter plan name"
+                           />
+                        </div>
+
+                        {/* Price */}
+                        <div>
+                           <label className="block text-sm font-bold text-on-surface-variant mb-2">
+                              Monthly Price ($)
+                           </label>
+                           <input
+                              type="number"
+                              value={editingData.price}
+                              onChange={(e) => handlePriceChange(e.target.value)}
+                              className="w-full px-4 py-3 rounded-xl border border-surface-container bg-surface-container-low text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                              placeholder="Enter price"
+                              min="0"
+                           />
+                        </div>
+
+                        {/* Features */}
+                        <div>
+                           <div className="flex justify-between items-center mb-4">
+                              <label className="block text-sm font-bold text-on-surface-variant">
                                  Features
                               </label>
-                              <div className="space-y-2 mb-3 max-h-32 overflow-y-auto">
-                                 {editingData.features.map((feature, idx) => (
-                                    <div key={idx} className="flex items-center gap-2">
-                                       <input
-                                          type="text"
-                                          value={feature}
-                                          onChange={(e) => handleFeatureChange(idx, e.target.value)}
-                                          placeholder="Feature description"
-                                          className="flex-1 bg-surface-container px-2 py-1 rounded text-xs border border-surface-container focus:outline-none focus:border-primary"
-                                       />
-                                       <button
-                                          onClick={() => handleRemoveFeature(idx)}
-                                          className="p-1 text-red-500 hover:bg-red-100 rounded transition-all"
-                                       >
-                                          <span className="material-symbols-outlined text-sm">close</span>
-                                       </button>
-                                    </div>
-                                 ))}
-                              </div>
                               <button
                                  onClick={handleAddFeature}
-                                 className="text-xs font-semibold text-primary hover:text-primary-dim transition-all flex items-center gap-1"
+                                 className="px-3 py-1 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-all flex items-center gap-1"
                               >
                                  <span className="material-symbols-outlined text-sm">add</span>
                                  Add Feature
                               </button>
                            </div>
 
-                           <div className="flex gap-2 pt-4 border-t border-surface-container">
-                              <button
-                                 onClick={handleCancelEdit}
-                                 className="flex-1 px-3 py-2 bg-surface-container text-on-surface rounded-lg font-semibold text-xs hover:bg-surface-container-low transition-all"
-                              >
-                                 Cancel
-                              </button>
-                              <button
-                                 onClick={handleSavePlan}
-                                 disabled={savingPlan}
-                                 className="flex-1 px-3 py-2 bg-primary text-white rounded-lg font-semibold text-xs hover:bg-primary-dim transition-all disabled:opacity-50 flex items-center justify-center gap-1"
-                              >
-                                 {savingPlan ? (
-                                    <span className="material-symbols-outlined text-sm animate-spin">refresh</span>
-                                 ) : (
-                                    <span className="material-symbols-outlined text-sm">check</span>
-                                 )}
-                                 Save
-                              </button>
-                           </div>
-                        </div>
-                     ) : (
-                        // View Mode
-                        <>
-                           <button
-                              onClick={() => handleEditPlan(plan.id)}
-                              className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-all z-10 flex items-center justify-center"
-                              title="Edit plan"
-                           >
-                              <span className="material-symbols-outlined text-sm">edit</span>
-                           </button>
-
-                           <div className="flex justify-start mb-6">
-                              <div className="w-12 h-12 rounded-2xl bg-opacity-30 flex items-center justify-center text-primary">
-                                 <span className="material-symbols-outlined">{plan.icon}</span>
-                              </div>
-                           </div>
-
-                           <h3 className="text-xl font-black text-on-surface mb-1">
-                              {plan.name}
-                           </h3>
-                           <p className="text-3xl font-black text-primary mb-4">
-                              ${plan.price}
-                              <span className="text-sm font-medium text-on-surface-variant">
-                                 {plan.price > 0 ? "/mo" : ""}
-                              </span>
-                           </p>
-                           <div className="space-y-2">
-                              {plan.features.map((feature, idx) => (
-                                 <div key={idx} className="flex items-center gap-2 text-xs font-medium text-on-surface-variant">
-                                    <span className="material-symbols-outlined text-emerald-500 text-sm">
-                                       check_circle
-                                    </span>
-                                    {feature}
+                           <div className="space-y-3">
+                              {editingData.features.map((feature, index) => (
+                                 <div key={index} className="flex gap-3">
+                                    <input
+                                       type="text"
+                                       value={feature}
+                                       onChange={(e) => handleFeatureChange(index, e.target.value)}
+                                       className="flex-1 px-4 py-3 rounded-xl border border-surface-container bg-surface-container-low text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                                       placeholder="Enter feature"
+                                    />
+                                    <button
+                                       onClick={() => handleRemoveFeature(index)}
+                                       className="px-3 py-3 text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                    >
+                                       <span className="material-symbols-outlined">close</span>
+                                    </button>
                                  </div>
                               ))}
                            </div>
-                        </>
-                     )}
+                        </div>
+                     </div>
+
+                     {/* Modal Footer */}
+                     <div className="px-6 py-5 sm:px-8 sm:py-6 border-t border-surface-container flex gap-3 flex-col sm:flex-row justify-end">
+                        <button
+                           onClick={handleCancelEdit}
+                           className="px-6 py-2 rounded-xl bg-surface-container text-on-surface hover:bg-surface-container/80 transition-all font-semibold text-sm"
+                        >
+                           Cancel
+                        </button>
+                        <button
+                           onClick={handleSavePlan}
+                           disabled={savingPlan}
+                           className="px-6 py-2 rounded-xl bg-gradient-to-br from-primary to-primary-dim text-white font-semibold text-sm shadow-lg shadow-primary/20 hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                           {savingPlan ? (
+                              <>
+                                 <span className="material-symbols-outlined text-sm animate-spin">refresh</span>
+                                 Saving...
+                              </>
+                           ) : (
+                              <>
+                                 <span className="material-symbols-outlined text-sm">check</span>
+                                 Save Changes
+                              </>
+                           )}
+                        </button>
+                     </div>
                   </div>
-               ))}
-            </div>
+               </div>
+            )}
 
             {/* Promo Codes & Editor Config */}
-            <div className="grid grid-cols-12 gap-8">
-               <div className="col-span-12 xl:col-span-7 space-y-8">
+            <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
+               <div className="col-span-1 xl:col-span-7 space-y-8">
                   <div className="bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm">
-                     <div className="px-8 py-6 flex items-center justify-between border-b border-surface-container">
+                     <div className="flex flex-col gap-4 border-b border-surface-container px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
                         <div>
                            <h3 className="text-xl font-bold">Generated Promo Codes</h3>
                            <p className="text-xs text-on-surface-variant mt-1">Single-use tokens to grant Enterprise access.</p>
@@ -385,7 +401,7 @@ function AdminSubscription() {
 
                </div>
 
-               <div className="col-span-12 xl:col-span-5 space-y-8">
+               <div className="col-span-1 xl:col-span-5 space-y-8">
                   <div className="bg-surface-container-lowest p-8 rounded-3xl shadow-sm">
                      <h3 className="text-xl font-bold mb-6">Plan Revenue Share</h3>
                      <div className="space-y-6">
