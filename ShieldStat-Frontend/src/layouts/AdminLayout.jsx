@@ -1,22 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, Link, useLocation } from "react-router-dom";
 import logo from "../assets/logo.svg";
+import Navbar from "../components/Navbar";
 import ResetPasswordModal from "../components/ResetPasswordModal";
 import { logoutAndRedirect } from "../utils/auth";
 
-function SidebarLink({ to, icon, children }) {
+function SidebarLink({ to, icon, children, isOpen }) {
   const location = useLocation();
   const isActive = to !== "#" && location.pathname === to;
 
   const baseClass =
     "relative flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 overflow-hidden";
+  const compactClass = "lg:justify-center lg:px-2 lg:gap-0";
   const activeClass = "text-primary font-bold bg-primary/5 shadow-sm";
   const inactiveClass = "text-on-surface hover:text-primary hover:bg-primary/5";
 
   return (
     <Link
       to={to}
-      className={`${baseClass} ${isActive ? activeClass : inactiveClass}`}
+      className={`${baseClass} ${!isOpen ? compactClass : ""} ${isActive ? activeClass : inactiveClass}`}
     >
       <span
         className={
@@ -26,7 +28,7 @@ function SidebarLink({ to, icon, children }) {
         }
       />
       <span className="material-symbols-outlined">{icon}</span>
-      <span>{children}</span>
+      <span className={isOpen ? "block" : "hidden"}>{children}</span>
     </Link>
   );
 }
@@ -36,9 +38,13 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const settingsRef = useRef(null);
-  const navigate = useNavigate();
 
   const onToggle = () => setIsOpen((v) => !v);
+
+  const handleSettingsClick = () => {
+    if (!isOpen) setIsOpen(true);
+    setIsSettingsOpen((current) => !current);
+  };
 
   const handleLogout = (e) => {
     e.preventDefault();
@@ -57,11 +63,19 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-slate-100 dark:bg-slate-950">
-      {/* Admin Sidebar */}
+    <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
+      <button
+        type="button"
+        className={`fixed inset-0 z-30 bg-slate-950/45 transition-opacity duration-200 lg:hidden ${isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
+        onClick={() => setIsOpen(false)}
+        aria-label="Close sidebar"
+      />
+
       <aside
-        className={`sticky top-0 flex flex-col h-screen overflow-hidden border-r bg-surface dark:bg-slate-900 transition-all duration-300 ${
-          isOpen ? "w-72 px-6 py-8 border-r dark:border-slate-800" : "w-0 border-r-0 px-0 py-0"
+        className={`fixed inset-y-0 left-0 z-40 flex h-full shrink-0 flex-col border-r border-slate-200 bg-slate-50 shadow-2xl transition-all duration-300 dark:border-slate-800 dark:bg-slate-900 lg:static lg:translate-x-0 lg:shadow-none ${
+          isOpen
+            ? "translate-x-0 w-72 overflow-visible px-6 py-8 pr-8"
+            : "-translate-x-full w-72 overflow-hidden px-6 py-8 pr-8 lg:w-16 lg:translate-x-0 lg:overflow-hidden lg:px-3 lg:py-6"
         }`}
         aria-hidden={!isOpen}
       >
@@ -69,8 +83,8 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
         <button
           type="button"
           onClick={onToggle}
-          className={`absolute top-8 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-sm transition hover:border-indigo-200 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:text-indigo-700 dark:hover:text-indigo-400 ${
-            isOpen ? "right-[-22px]" : "right-[-56px]"
+          className={`absolute z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-md transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/40 dark:hover:text-indigo-400 ${
+            isOpen ? "top-6 right-[-18px]" : "top-5 right-3 lg:top-5 lg:right-3"
           }`}
           aria-label={isOpen ? "Close sidebar" : "Open sidebar"}
         >
@@ -83,7 +97,9 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
 
         <div
           className={`flex h-full min-h-0 flex-col overflow-y-auto ${
-            isOpen ? "opacity-100" : "pointer-events-none opacity-0"
+            isOpen
+              ? "opacity-100"
+              : "pointer-events-none opacity-0 lg:pointer-events-auto lg:opacity-100"
           }`}
         >
           <div className="mb-12 px-2">
@@ -97,16 +113,16 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
           </div>
 
           <nav className="flex-1 space-y-2">
-            <SidebarLink to="/admin" icon="group">
+            <SidebarLink to="/admin" icon="group" isOpen={isOpen}>
               User Management
             </SidebarLink>
-            <SidebarLink to="/admin/subscription" icon="payments">
+            <SidebarLink to="/admin/subscription" icon="payments" isOpen={isOpen}>
               Subscription Management
             </SidebarLink>
           </nav>
 
           <div className="pt-8 mt-8 border-t border-slate-200 dark:border-slate-800 space-y-2">
-            <SidebarLink to="/admin/profile" icon="person">
+            <SidebarLink to="/admin/profile" icon="person" isOpen={isOpen}>
               Profile
             </SidebarLink>
 
@@ -170,36 +186,29 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
 
               <button
                 type="button"
-                onClick={() => setIsSettingsOpen((current) => !current)}
-                className="w-full relative flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-on-surface hover:text-primary hover:bg-primary/5 cursor-pointer text-left font-medium"
+                onClick={handleSettingsClick}
+                className={`w-full relative flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-on-surface hover:text-primary hover:bg-primary/5 cursor-pointer text-left font-medium ${!isOpen ? "lg:justify-center lg:px-2 lg:gap-0" : ""}`}
                 aria-expanded={isSettingsOpen}
                 aria-haspopup="menu"
               >
                 <span className="material-symbols-outlined">settings</span>
-                <span>Settings</span>
+                <span className={isOpen ? "block" : "hidden"}>Settings</span>
               </button>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main area with outlet */}
-      <div className="flex-1 ml-0 relative overflow-y-auto h-screen">
-        {!isOpen && (
-          <button
-            type="button"
-            onClick={onToggle}
-            className="absolute top-4 left-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-md transition hover:border-indigo-200 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:text-indigo-700 dark:hover:text-indigo-400"
-            aria-label="Open sidebar"
-          >
-            <span className="material-symbols-outlined">
-              keyboard_double_arrow_right
-            </span>
-          </button>
-        )}
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <Navbar
+          isSidebarOpen={isOpen}
+          onOpenSidebar={() => setIsOpen(true)}
+        />
 
-        <main className="p-8">
-          <Outlet />
+        <main className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+            <Outlet />
+          </div>
         </main>
       </div>
 

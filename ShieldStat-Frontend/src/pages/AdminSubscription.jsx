@@ -54,14 +54,14 @@ function AdminSubscription() {
         </div>
       )}
 
-      <div className="p-10 space-y-10">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-0 py-4 sm:py-6 lg:py-8">
         {/* Header */}
-        <div className="flex items-end justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-4xl font-black text-on-surface tracking-tight mb-2">
+            <h2 className="mb-2 text-2xl font-black tracking-tight text-on-surface sm:text-3xl lg:text-4xl">
               Subscription Management
             </h2>
-            <p className="text-on-surface-variant max-w-md">
+            <p className="max-w-2xl text-sm text-on-surface-variant sm:text-base">
               Define service tiers, adjust pricing models, manage enterprise
               features, and generate promotional codes.
             </p>
@@ -69,7 +69,7 @@ function AdminSubscription() {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <div className="bg-surface-container-lowest p-6 rounded-3xl shadow-sm border border-primary/10 relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4">
               <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded-lg uppercase">
@@ -142,10 +142,10 @@ function AdminSubscription() {
         </div>
 
         {/* Promo Codes & Editor Config */}
-        <div className="grid grid-cols-12 gap-8">
-          <div className="col-span-12 xl:col-span-7 space-y-8">
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
+          <div className="col-span-1 xl:col-span-7 space-y-8">
             <div className="bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm">
-              <div className="px-8 py-6 flex items-center justify-between border-b border-surface-container">
+              <div className="flex flex-col gap-4 border-b border-surface-container px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
                 <div>
                   <h3 className="text-xl font-bold">Generated Promo Codes</h3>
                   <p className="text-xs text-on-surface-variant mt-1">Single-use tokens to grant Enterprise access.</p>
@@ -203,7 +203,7 @@ function AdminSubscription() {
 
           </div>
 
-          <div className="col-span-12 xl:col-span-5 space-y-8">
+          <div className="col-span-1 xl:col-span-5 space-y-8">
             <div className="bg-surface-container-lowest p-8 rounded-3xl shadow-sm">
               <h3 className="text-xl font-bold mb-6">Plan Revenue Share</h3>
               <div className="space-y-6">
