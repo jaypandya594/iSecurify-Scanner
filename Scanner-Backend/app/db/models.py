@@ -56,6 +56,20 @@ class PromoCode(Base):
     used_at = Column(TIMESTAMP, nullable=True)
     used_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
 
+
+class SubscriptionPlan(Base):
+    __tablename__ = "subscription_plans"
+
+    plan_id = Column(String(64), primary_key=True)
+    name = Column(String(255), nullable=False)
+    price = Column(Integer, nullable=False, default=0)
+    icon = Column(String(255), nullable=True)
+    color = Column(String(255), nullable=True)
+    container_color = Column(String(255), nullable=True)
+    popular = Column(Boolean, nullable=False, server_default="false")
+    features = Column(JSONB, nullable=True)
+    tags = Column(JSONB, nullable=True)
+
 class Blacklist(Base):
     __tablename__ = "blacklist"
 
@@ -207,5 +221,4 @@ class FixStatus(str, enum.Enum):
     pending = "pending"
     running = "running"
     completed = "completed"
-    failed = "failed"   
-    
+    failed = "failed"

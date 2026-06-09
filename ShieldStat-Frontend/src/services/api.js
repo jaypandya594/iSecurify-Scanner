@@ -215,6 +215,23 @@ export function getTotalScans(token) {
    return request("/admin/scans/total", { token });
 }
 
+// Subscription plans
+export function getSubscriptionPlans(token) {
+   return request("/admin/subscription/plans", { token });
+}
+
+export function createSubscriptionPlan(body, token) {
+   return request("/admin/subscription/plans", { method: "POST", body, token });
+}
+
+export function updateSubscriptionPlan(planId, body, token) {
+   return request(`/admin/subscription/plans/${encodeURIComponent(planId)}`, { method: "PUT", body, token });
+}
+
+export function deleteSubscriptionPlan(planId, token) {
+   return request(`/admin/subscription/plans/${encodeURIComponent(planId)}`, { method: "DELETE", token });
+}
+
 // ─── Malware ──────────────────────────────────────────────────────────────────
 
 export function scanMalware(domain, token, signal) {

@@ -4,15 +4,19 @@ from sqlalchemy.orm import Session
 from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest
 from app.api.admin.service import (
     block_email,
+    create_subscription_plan,
     delete_promo_code,
+    delete_subscription_plan,
     generate_promo_code,
     get_blacklisted_emails,
     get_promo_codes,
     get_scan_summaries,
+    get_subscription_plans,
     get_total_scans,
     get_users_by_org,
     provision_admin_account,
     unblock_email,
+    update_subscription_plan,
 )
 from app.core.middleware import require_admin
 from app.db.base import get_db
@@ -104,3 +108,39 @@ def get_scans_total(
     _current_admin: User = Depends(require_admin),
 ):
     return get_total_scans(db)
+
+
+@router.get("/subscription/plans")
+def list_subscription_plans(
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    return get_subscription_plans(db)
+
+
+@router.post("/subscription/plans")
+def create_plan(
+    req: dict,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    return create_subscription_plan(req, db)
+
+
+@router.put("/subscription/plans/{plan_id}")
+def update_plan(
+    plan_id: str,
+    req: dict,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    return update_subscription_plan(plan_id, req, db)
+
+
+@router.delete("/subscription/plans/{plan_id}")
+def delete_plan(
+    plan_id: str,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    return delete_subscription_plan(plan_id, db)

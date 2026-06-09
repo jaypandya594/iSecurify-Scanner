@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.auth.service import hashPassword
-from app.db.models import Blacklist, Organization, PromoCode, ScanScoreHistory, ScanSummary, User
+from app.db.models import Blacklist, Organization, PromoCode, ScanScoreHistory, ScanSummary, User, SubscriptionPlan
 from app.utils.email import send_new_admin_credentials_email
 
 
@@ -308,3 +308,140 @@ def provision_admin_account(email: str, current_admin: User, db: Session) -> dic
         "message": "Admin account created and credentials sent by email",
         "email": normalized,
     }
+
+
+def _serialize_plan(plan: SubscriptionPlan) -> dict:
+    return {
+        "plan_id": plan.plan_id,
+        "name": plan.name,
+        "price": plan.price,
+        "icon": plan.icon,
+        "color": plan.color,
+        "container_color": plan.container_color,
+        "popular": bool(plan.popular),
+        "features": plan.features or [],
+        "tags": plan.tags or [],
+    }
+
+
+def get_subscription_plans(db: Session) -> list[dict]:
+    plans = db.query(SubscriptionPlan).all()
+    return [_serialize_plan(p) for p in plans]
+
+
+def seed_default_subscription_plans(db: Session) -> None:
+    if db.query(SubscriptionPlan).count() > 0:
+        return
+
+    default_plans = [
+        {
+            "plan_id": "enterprise-plus",
+            "name": "Enterprise Plus",
+            "price": 499,
+            "icon": "rocket_launch",
+            "color": "primary",
+            "container_color": "primary-container",
+            "popular": True,
+            "features": ["Unlimited Scans", "Priority Support", "Custom Integrations"],
+        },
+        {
+            "plan_id": "business-pro",
+            "name": "Business Pro",
+            "price": 199,
+            "icon": "business_center",
+            "color": "tertiary",
+            "container_color": "tertiary-container",
+            "popular": False,
+            "features": ["Advanced Analytics", "Team Management", "API Access"],
+        },
+        {
+            "plan_id": "standard",
+            "name": "Standard",
+            "price": 49,
+            "icon": "work",
+            "color": "secondary",
+            "container_color": "secondary-container",
+            "popular": False,
+            "features": ["Basic Scanning", "Email Support", "Monthly Reports"],
+        },
+        {
+            "plan_id": "free-tier",
+            "name": "Free Tier",
+            "price": 0,
+            "icon": "hourglass_top",
+            "color": "outline-variant",
+            "container_color": "outline-variant",
+            "popular": False,
+            "features": ["5 Scans/Month", "Basic Reports", "Community Support"],
+        },
+    ]
+
+    for plan_data in default_plans:
+        plan = SubscriptionPlan(**plan_data)
+        db.add(plan)
+    db.commit()
+
+
+def create_subscription_plan(req: dict, db: Session) -> dict:
+    plan_id = req.get("plan_id") or str(uuid.uuid4())
+
+    if db.query(SubscriptionPlan).filter(SubscriptionPlan.plan_id == plan_id).first():
+        raise HTTPException(status_code=409, detail="Plan with this id already exists")
+
+    plan = SubscriptionPlan(
+        plan_id=plan_id,
+        name=req.get("name"),
+        price=req.get("price", 0),
+        icon=req.get("icon"),
+        color=req.get("color"),
+        container_color=req.get("container_color"),
+        popular=bool(req.get("popular", False)),
+        features=req.get("features", []),
+        tags=req.get("tags", []),
+    )
+
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+
+    return _serialize_plan(plan)
+
+
+def update_subscription_plan(plan_id: str, req: dict, db: Session) -> dict:
+    plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.plan_id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    if "name" in req and req["name"] is not None:
+        plan.name = req["name"]
+    if "price" in req and req["price"] is not None:
+        plan.price = req["price"]
+    if "icon" in req:
+        plan.icon = req.get("icon")
+    if "color" in req:
+        plan.color = req.get("color")
+    if "container_color" in req:
+        plan.container_color = req.get("container_color")
+    if "popular" in req and req["popular"] is not None:
+        plan.popular = bool(req["popular"])
+    if "features" in req and req["features"] is not None:
+        plan.features = req["features"]
+    if "tags" in req and req["tags"] is not None:
+        plan.tags = req["tags"]
+
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+
+    return _serialize_plan(plan)
+
+
+def delete_subscription_plan(plan_id: str, db: Session) -> dict:
+    plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.plan_id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    db.delete(plan)
+    db.commit()
+
+    return {"message": "Subscription plan deleted successfully", "plan_id": plan_id}
