@@ -55,7 +55,7 @@ function SpiderChart({ metrics, size = 320 }) {
     <svg
       viewBox="0 0 500 500"
       width="100%"
-      height="auto"
+      height="100%"
       className="block w-full max-w-[420px] sm:max-w-[500px]"
       style={{ maxWidth: `${size}px` }}
       preserveAspectRatio="xMidYMid meet"

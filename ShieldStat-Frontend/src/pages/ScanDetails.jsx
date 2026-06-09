@@ -1,8 +1,6 @@
   import React, { useEffect, useState } from "react";
   import { useLocation, useSearchParams, Link } from "react-router-dom";
   import { getScore, getIpReputation, getProfile, submitFix, getFixStatus  } from "../services/api";
-  import { jsPDF } from "jspdf";
-  import autoTable from "jspdf-autotable";
   import isecurifyLogo from "../assets/isecurify_logo.png";
 
 
@@ -788,6 +786,10 @@
     const handleDownloadReport = async () => {
       if (!data) return;
 
+      const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+        import("jspdf"),
+        import("jspdf-autotable"),
+      ]);
       const doc = new jsPDF();
       
       let currentY = 15;

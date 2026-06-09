@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import logo from "../assets/logo.svg";
+import { getProfile } from "../services/api";
 
 function Navbar({ onOpenSidebar }) {
   const [availableSlots, setAvailableSlots] = useState(0);
@@ -9,7 +10,6 @@ function Navbar({ onOpenSidebar }) {
       const token = localStorage.getItem("token");
       if (!token) return;
       try {
-        const { getProfile } = await import("../services/api");
         const profile = await getProfile(token);
         const domains = profile?.domain ? (Array.isArray(profile.domain) ? profile.domain : [profile.domain]) : [];
         const uniqueDomains = new Set(domains.map(d => d.trim().toLowerCase()).filter(Boolean));

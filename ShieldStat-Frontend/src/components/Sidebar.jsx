@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import logo from "../assets/logo.svg";
 import ResetPasswordModal from "./ResetPasswordModal";
+import { getProfile } from "../services/api";
 import { logoutAndRedirect } from "../utils/auth";
 
 function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
@@ -22,7 +23,6 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
       const token = localStorage.getItem("token");
       if (!token) return;
       try {
-        const { getProfile } = await import("../services/api");
         const profile = await getProfile(token);
         const domains = profile?.domain ? (Array.isArray(profile.domain) ? profile.domain : [profile.domain]) : [];
         const uniqueDomains = new Set(domains.map(d => d.trim().toLowerCase()).filter(Boolean));
@@ -89,8 +89,8 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
   };
 
   const baseClass =
-    "relative flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 overflow-hidden";
-  const compactClass = "lg:justify-center lg:px-2 lg:gap-0";
+    "relative flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 overflow-hidden lg:min-h-[48px]";
+  const compactClass = "lg:justify-center lg:px-2 lg:gap-0 lg:py-2.5 lg:w-full";
 
   const activeClass = "text-indigo-700 font-semibold bg-indigo-50 shadow-sm";
 
@@ -105,6 +105,7 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
           : "-translate-x-full w-72 overflow-hidden px-6 py-8 pr-8 lg:w-16 lg:translate-x-0 lg:overflow-hidden lg:px-3 lg:py-6"
       }`}
       aria-hidden={!isOpen}
+      inert={!isOpen ? "" : undefined}
     >
       <button
         type="button"
@@ -150,7 +151,7 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
                   : "absolute left-0 top-0 bottom-0 w-0 bg-indigo-600 rounded-r-full transition-all duration-200"
               }
             />
-            <span className="material-symbols-outlined">dashboard</span>
+            <span className="material-symbols-outlined lg:text-xl lg:leading-none">dashboard</span>
             <span className={isOpen ? "block" : "hidden"}>Dashboard</span>
           </Link>
 
@@ -166,7 +167,7 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
                   : "absolute left-0 top-0 bottom-0 w-0 bg-indigo-600 rounded-r-full transition-all duration-200"
               }
             />
-            <span className="material-symbols-outlined">security</span>
+            <span className="material-symbols-outlined lg:text-xl lg:leading-none">security</span>
             <span className={isOpen ? "block" : "hidden"}>Assessment</span>
           </Link>
 
@@ -183,10 +184,10 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
                   : "absolute left-0 top-0 bottom-0 w-0 bg-indigo-600 rounded-r-full transition-all duration-200"
               }
             />
-            <span className="material-symbols-outlined">radar</span>
+            <span className="material-symbols-outlined lg:text-xl lg:leading-none">radar</span>
             <div className="flex flex-1 items-center justify-between">
               <span className={isOpen ? "block" : "hidden"}>Audit Domain</span>
-              {availableSlots > 0 && (
+              {availableSlots > 0 && isOpen && (
                 <div className="flex h-5 items-center justify-center rounded-full bg-rose-100 px-2 text-[10px] font-black text-rose-700 shadow-sm animate-pulse">
                   +{availableSlots}
                 </div>
@@ -211,10 +212,10 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
                   : "absolute left-0 top-0 bottom-0 w-0 bg-indigo-600 rounded-r-full transition-all duration-200"
               }
             />
-            <span className="material-symbols-outlined">bug_report</span>
+            <span className="material-symbols-outlined lg:text-xl lg:leading-none">bug_report</span>
             <div className="flex flex-1 items-center justify-between">
               <span className={isOpen ? "block" : "hidden"}>Malware Scan</span>
-              {availableSlots > 0 && (
+              {availableSlots > 0 && isOpen && (
                 <div className="flex h-5 items-center justify-center rounded-full bg-rose-100 px-2 text-[10px] font-black text-rose-700 shadow-sm animate-pulse">
                   +{availableSlots}
                 </div>
@@ -241,7 +242,7 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
                   : "absolute left-0 top-0 bottom-0 w-0 bg-indigo-600 rounded-r-full transition-all duration-200"
               }
             />
-            <span className="material-symbols-outlined">account_circle</span>
+            <span className="material-symbols-outlined lg:text-xl lg:leading-none">account_circle</span>
             <span className={isOpen ? "block" : "hidden"}>Profile</span>
           </Link>
 
@@ -304,7 +305,7 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
               aria-expanded={isSettingsOpen}
               aria-haspopup="menu"
             >
-              <span className="material-symbols-outlined">settings</span>
+              <span className="material-symbols-outlined lg:text-xl lg:leading-none">settings</span>
               <span className={isOpen ? "block" : "hidden"}>Settings</span>
             </button>
           </div>
