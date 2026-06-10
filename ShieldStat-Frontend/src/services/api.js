@@ -215,6 +215,7 @@ export function getTotalScans(token) {
    return request("/admin/scans/total", { token });
 }
 
+<<<<<<< Updated upstream
 // Subscription plans
 export function getSubscriptionPlans(token) {
    return request("/admin/subscription/plans", { token });
@@ -230,6 +231,14 @@ export function updateSubscriptionPlan(planId, body, token) {
 
 export function deleteSubscriptionPlan(planId, token) {
    return request(`/admin/subscription/plans/${encodeURIComponent(planId)}`, { method: "DELETE", token });
+=======
+export function getAuditLogs(token) {
+   return request("/admin/audit/logs", { token });
+}
+
+export function getSecurityAlerts(token) {
+   return request("/admin/security/alerts", { token });
+>>>>>>> Stashed changes
 }
 
 // ─── Malware ──────────────────────────────────────────────────────────────────

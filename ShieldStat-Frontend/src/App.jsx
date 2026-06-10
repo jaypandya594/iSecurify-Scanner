@@ -15,6 +15,7 @@ const ScanDetails = lazy(() => import("./pages/ScanDetails"));
 const ScanHistory = lazy(() => import("./pages/ScanHistory"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminSubscription = lazy(() => import("./pages/AdminSubscription"));
+const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 const Assessment = lazy(() => import("./pages/Assessment"));
 const MalwareScanHistory = lazy(() => import("./pages/MalwareScanHistory"));
 const MalwareDashboard = lazy(() => import("./pages/MalwareDashboard"));
@@ -97,6 +98,7 @@ function App() {
       >
         <Route index element={<AdminUsers />} />
         <Route path="subscription" element={<AdminSubscription />} />
+        <Route path="audit" element={<AdminAudit />} />
         <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>

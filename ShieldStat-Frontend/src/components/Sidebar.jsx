@@ -187,11 +187,6 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
             <span className="material-symbols-outlined lg:text-xl lg:leading-none">radar</span>
             <div className="flex flex-1 items-center justify-between">
               <span className={isOpen ? "block" : "hidden"}>Audit Domain</span>
-              {availableSlots > 0 && isOpen && (
-                <div className="flex h-5 items-center justify-center rounded-full bg-rose-100 px-2 text-[10px] font-black text-rose-700 shadow-sm animate-pulse">
-                  +{availableSlots}
-                </div>
-              )}
             </div>
           </Link>
 
@@ -215,11 +210,6 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
             <span className="material-symbols-outlined lg:text-xl lg:leading-none">bug_report</span>
             <div className="flex flex-1 items-center justify-between">
               <span className={isOpen ? "block" : "hidden"}>Malware Scan</span>
-              {availableSlots > 0 && isOpen && (
-                <div className="flex h-5 items-center justify-center rounded-full bg-rose-100 px-2 text-[10px] font-black text-rose-700 shadow-sm animate-pulse">
-                  +{availableSlots}
-                </div>
-              )}
             </div>
           </Link>
 

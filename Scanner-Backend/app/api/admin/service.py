@@ -3,11 +3,17 @@ import secrets
 import string
 import uuid
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.auth.service import hashPassword
+<<<<<<< Updated upstream
 from app.db.models import Blacklist, Organization, PromoCode, ScanScoreHistory, ScanSummary, User, SubscriptionPlan
+=======
+from app.db.models import AuditLog, Blacklist, Organization, PromoCode, ScanScoreHistory, ScanSummary, SecurityAlert, User
+>>>>>>> Stashed changes
 from app.utils.email import send_new_admin_credentials_email
 
 
@@ -31,7 +37,43 @@ def _serialize_user(user: User, blocked_emails: set[str]) -> dict:
     }
 
 
-def generate_promo_code(db: Session) -> dict:
+def _record_audit_log(db: Session, admin: User, action: str, target_type: str, target_id: str, details: dict | None = None, ip_address: str | None = None) -> None:
+    db.add(
+        AuditLog(
+            admin_id=admin.user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details or {},
+            ip_address=ip_address,
+        )
+    )
+    db.commit()
+
+
+def _maybe_create_alert(db: Session, severity: str, message: str, details: dict | None = None) -> None:
+    db.add(SecurityAlert(severity=severity, message=message, details=details or {}))
+    db.commit()
+
+
+def _detect_mass_blocking(db: Session, admin: User) -> None:
+    window_start = datetime.now(timezone.utc) - timedelta(minutes=5)
+    recent_blocks = (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "USER_BLOCKED")
+        .filter(AuditLog.created_at >= window_start)
+        .count()
+    )
+    if recent_blocks >= 10:
+        _maybe_create_alert(
+            db,
+            severity="high",
+            message="Mass user blocking detected",
+            details={"recent_blocks": recent_blocks, "triggered_by": admin.email},
+        )
+
+
+def generate_promo_code(db: Session, current_admin: User | None = None, ip_address: str | None = None) -> dict:
     code_str = _generate_promo_string()
 
     while db.query(PromoCode).filter(PromoCode.code == code_str).first():
@@ -46,6 +88,17 @@ def generate_promo_code(db: Session) -> dict:
     db.add(promo)
     db.commit()
     db.refresh(promo)
+
+    if current_admin:
+        _record_audit_log(
+            db,
+            admin=current_admin,
+            action="PROMO_CODE_CREATED",
+            target_type="promo_code",
+            target_id=promo.code,
+            details={"code": promo.code},
+            ip_address=ip_address,
+        )
 
     return {
         "message": "Promo code generated successfully",
@@ -98,7 +151,7 @@ def get_promo_codes(db: Session) -> list[dict]:
     ]
 
 
-def delete_promo_code(code_str: str, db: Session) -> dict:
+def delete_promo_code(code_str: str, db: Session, current_admin: User | None = None, ip_address: str | None = None) -> dict:
     """Delete a promo code by its code string (both used and unused codes can be deleted)."""
     promo = db.query(PromoCode).filter(PromoCode.code == code_str).first()
 
@@ -115,6 +168,17 @@ def delete_promo_code(code_str: str, db: Session) -> dict:
 
     db.delete(promo)
     db.commit()
+
+    if current_admin:
+        _record_audit_log(
+            db,
+            admin=current_admin,
+            action="PROMO_CODE_DELETED",
+            target_type="promo_code",
+            target_id=promo.code,
+            details={"code": promo.code},
+            ip_address=ip_address,
+        )
 
     return {
         "message": "Promo code deleted successfully",
@@ -162,7 +226,7 @@ def get_users_by_org(db: Session) -> dict:
     }
 
 
-def block_email(email: str, current_admin: User, db: Session) -> dict:
+def block_email(email: str, current_admin: User, db: Session, ip_address: str | None = None) -> dict:
     normalized_email = _normalize_email(email)
 
     if normalized_email == current_admin.email.lower():
@@ -180,6 +244,17 @@ def block_email(email: str, current_admin: User, db: Session) -> dict:
     db.commit()
     db.refresh(blocked_user)
 
+    _record_audit_log(
+        db,
+        admin=current_admin,
+        action="USER_BLOCKED",
+        target_type="user",
+        target_id=normalized_email,
+        details={"email": normalized_email, "status": "blocked"},
+        ip_address=ip_address,
+    )
+    _detect_mass_blocking(db, current_admin)
+
     return {
         "message": "Email blocked successfully",
         "email": blocked_user.email,
@@ -188,7 +263,7 @@ def block_email(email: str, current_admin: User, db: Session) -> dict:
     }
 
 
-def unblock_email(email: str, db: Session) -> dict:
+def unblock_email(email: str, db: Session, current_admin: User | None = None, ip_address: str | None = None) -> dict:
     normalized_email = _normalize_email(email)
 
     deleted_count = (
@@ -201,6 +276,17 @@ def unblock_email(email: str, db: Session) -> dict:
         raise HTTPException(status_code=404, detail="Email is not blocked")
 
     db.commit()
+
+    if current_admin:
+        _record_audit_log(
+            db,
+            admin=current_admin,
+            action="USER_UNBLOCKED",
+            target_type="user",
+            target_id=normalized_email,
+            details={"email": normalized_email, "status": "unblocked"},
+            ip_address=ip_address,
+        )
 
     return {
         "message": "Email unblocked successfully",
@@ -266,7 +352,39 @@ def get_total_scans(db: Session) -> dict:
     return {"total_scans": total_scans}
 
 
-def provision_admin_account(email: str, current_admin: User, db: Session) -> dict:
+def get_audit_logs(db: Session) -> list[dict]:
+    logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).all()
+    return [
+        {
+            "id": log.id,
+            "admin_id": log.admin_id,
+            "action": log.action,
+            "target_type": log.target_type,
+            "target_id": log.target_id,
+            "details": log.details or {},
+            "ip_address": log.ip_address,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "admin_email": db.query(User).filter(User.user_id == log.admin_id).first().email if log.admin_id else "System",
+        }
+        for log in logs
+    ]
+
+
+def get_security_alerts(db: Session) -> list[dict]:
+    alerts = db.query(SecurityAlert).order_by(SecurityAlert.created_at.desc()).all()
+    return [
+        {
+            "id": alert.id,
+            "severity": alert.severity,
+            "message": alert.message,
+            "details": alert.details or {},
+            "created_at": alert.created_at.isoformat() if alert.created_at else None,
+        }
+        for alert in alerts
+    ]
+
+
+def provision_admin_account(email: str, current_admin: User, db: Session, ip_address: str | None = None) -> dict:
     normalized = _normalize_email(email)
 
     if normalized == current_admin.email.lower():
@@ -303,6 +421,16 @@ def provision_admin_account(email: str, current_admin: User, db: Session) -> dic
         )
 
     db.commit()
+
+    _record_audit_log(
+        db,
+        admin=current_admin,
+        action="ADMIN_CREATED",
+        target_type="admin",
+        target_id=normalized,
+        details={"email": normalized, "invited_by": current_admin.email},
+        ip_address=ip_address,
+    )
 
     return {
         "message": "Admin account created and credentials sent by email",

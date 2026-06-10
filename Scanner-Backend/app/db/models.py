@@ -77,6 +77,30 @@ class Blacklist(Base):
     blocked_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    admin_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    action = Column(String(100), nullable=False)
+    target_type = Column(String(50), nullable=True)
+    target_id = Column(String(100), nullable=True)
+    details = Column(JSONB, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+
+
+class SecurityAlert(Base):
+    __tablename__ = "security_alerts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    severity = Column(String(20), nullable=False, default="medium")
+    message = Column(Text, nullable=False)
+    details = Column(JSONB, nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+
+
 class UserAssessment(Base):
     __tablename__ = "user_assessments"
 

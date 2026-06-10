@@ -119,6 +119,9 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
             <SidebarLink to="/admin/subscription" icon="payments" isOpen={isOpen}>
               Subscription Management
             </SidebarLink>
+            <SidebarLink to="/admin/audit" icon="shield" isOpen={isOpen}>
+              Audit & Security
+            </SidebarLink>
           </nav>
 
           <div className="pt-8 mt-8 border-t border-slate-200 dark:border-slate-800 space-y-2">

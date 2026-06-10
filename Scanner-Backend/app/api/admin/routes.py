@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest
@@ -8,10 +8,15 @@ from app.api.admin.service import (
     delete_promo_code,
     delete_subscription_plan,
     generate_promo_code,
+    get_audit_logs,
     get_blacklisted_emails,
     get_promo_codes,
     get_scan_summaries,
+<<<<<<< Updated upstream
     get_subscription_plans,
+=======
+    get_security_alerts,
+>>>>>>> Stashed changes
     get_total_scans,
     get_users_by_org,
     provision_admin_account,
@@ -27,10 +32,11 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.post("/generate-promo")
 def generate_promo(
+    request: Request,
     db: Session = Depends(get_db),
-    _current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
-    return generate_promo_code(db)
+    return generate_promo_code(db, current_admin=current_admin, ip_address=request.client.host if request.client else None)
 
 
 @router.get("/promo-codes")
@@ -44,11 +50,12 @@ def list_promo_codes(
 @router.delete("/promo-codes/{code}/delete")
 def delete_promo(
     code: str,
+    request: Request,
     db: Session = Depends(get_db),
-    _current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     """Delete a promo code (both used and unused codes can be deleted)"""
-    return delete_promo_code(code, db)
+    return delete_promo_code(code, db, current_admin=current_admin, ip_address=request.client.host if request.client else None)
 
 
 @router.get("/users")
@@ -62,28 +69,31 @@ def list_users_by_org(
 @router.post("/create-admin")
 def create_admin(
     req: CreateAdminRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ):
-    return provision_admin_account(req.email, current_admin, db)
+    return provision_admin_account(req.email, current_admin, db, ip_address=request.client.host if request.client else None)
 
 
 @router.post("/blacklist/block")
 def block_user_by_email(
     req: BlacklistEmailRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ):
-    return block_email(req.email, current_admin, db)
+    return block_email(req.email, current_admin, db, ip_address=request.client.host if request.client else None)
 
 
 @router.post("/blacklist/unblock")
 def unblock_user_by_email(
     req: BlacklistEmailRequest,
+    request: Request,
     db: Session = Depends(get_db),
-    _current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
-    return unblock_email(req.email, db)
+    return unblock_email(req.email, db, current_admin=current_admin, ip_address=request.client.host if request.client else None)
 
 
 @router.get("/blacklist")
@@ -110,6 +120,7 @@ def get_scans_total(
     return get_total_scans(db)
 
 
+<<<<<<< Updated upstream
 @router.get("/subscription/plans")
 def list_subscription_plans(
     db: Session = Depends(get_db),
@@ -144,3 +155,19 @@ def delete_plan(
     _current_admin: User = Depends(require_admin),
 ):
     return delete_subscription_plan(plan_id, db)
+=======
+@router.get("/audit/logs")
+def list_audit_logs(
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    return {"logs": get_audit_logs(db)}
+
+
+@router.get("/security/alerts")
+def list_security_alerts(
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    return {"alerts": get_security_alerts(db)}
+>>>>>>> Stashed changes
