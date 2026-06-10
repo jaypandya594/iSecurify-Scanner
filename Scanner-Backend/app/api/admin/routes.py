@@ -12,11 +12,8 @@ from app.api.admin.service import (
     get_blacklisted_emails,
     get_promo_codes,
     get_scan_summaries,
-<<<<<<< Updated upstream
-    get_subscription_plans,
-=======
     get_security_alerts,
->>>>>>> Stashed changes
+    get_subscription_plans,
     get_total_scans,
     get_users_by_org,
     provision_admin_account,
@@ -120,7 +117,6 @@ def get_scans_total(
     return get_total_scans(db)
 
 
-<<<<<<< Updated upstream
 @router.get("/subscription/plans")
 def list_subscription_plans(
     db: Session = Depends(get_db),
@@ -155,7 +151,8 @@ def delete_plan(
     _current_admin: User = Depends(require_admin),
 ):
     return delete_subscription_plan(plan_id, db)
-=======
+
+
 @router.get("/audit/logs")
 def list_audit_logs(
     db: Session = Depends(get_db),
@@ -170,4 +167,3 @@ def list_security_alerts(
     _current_admin: User = Depends(require_admin),
 ):
     return {"alerts": get_security_alerts(db)}
->>>>>>> Stashed changes

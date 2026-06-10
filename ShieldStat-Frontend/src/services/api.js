@@ -160,6 +160,22 @@ export function getPromoCodes(token) {
    return request("/admin/promo-codes", { token });
 }
 
+export function getSubscriptionPlans(token) {
+   return request("/admin/subscription/plans", { token });
+}
+
+export function createSubscriptionPlan(body, token) {
+   return request("/admin/subscription/plans", { method: "POST", body, token });
+}
+
+export function updateSubscriptionPlan(planId, body, token) {
+   return request(`/admin/subscription/plans/${encodeURIComponent(planId)}`, { method: "PUT", body, token });
+}
+
+export function deleteSubscriptionPlan(planId, token) {
+   return request(`/admin/subscription/plans/${encodeURIComponent(planId)}`, { method: "DELETE", token });
+}
+
 export function deletePromoCode(code, token) {
    return request(`/admin/promo-codes/${code}/delete`, {
       method: "DELETE",
@@ -215,30 +231,12 @@ export function getTotalScans(token) {
    return request("/admin/scans/total", { token });
 }
 
-<<<<<<< Updated upstream
-// Subscription plans
-export function getSubscriptionPlans(token) {
-   return request("/admin/subscription/plans", { token });
-}
-
-export function createSubscriptionPlan(body, token) {
-   return request("/admin/subscription/plans", { method: "POST", body, token });
-}
-
-export function updateSubscriptionPlan(planId, body, token) {
-   return request(`/admin/subscription/plans/${encodeURIComponent(planId)}`, { method: "PUT", body, token });
-}
-
-export function deleteSubscriptionPlan(planId, token) {
-   return request(`/admin/subscription/plans/${encodeURIComponent(planId)}`, { method: "DELETE", token });
-=======
 export function getAuditLogs(token) {
    return request("/admin/audit/logs", { token });
 }
 
 export function getSecurityAlerts(token) {
    return request("/admin/security/alerts", { token });
->>>>>>> Stashed changes
 }
 
 // ─── Malware ──────────────────────────────────────────────────────────────────

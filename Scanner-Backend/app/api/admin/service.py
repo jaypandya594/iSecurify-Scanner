@@ -9,11 +9,17 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.auth.service import hashPassword
-<<<<<<< Updated upstream
-from app.db.models import Blacklist, Organization, PromoCode, ScanScoreHistory, ScanSummary, User, SubscriptionPlan
-=======
-from app.db.models import AuditLog, Blacklist, Organization, PromoCode, ScanScoreHistory, ScanSummary, SecurityAlert, User
->>>>>>> Stashed changes
+from app.db.models import (
+    AuditLog,
+    Blacklist,
+    Organization,
+    PromoCode,
+    ScanScoreHistory,
+    ScanSummary,
+    SecurityAlert,
+    SubscriptionPlan,
+    User,
+)
 from app.utils.email import send_new_admin_credentials_email
 
 
