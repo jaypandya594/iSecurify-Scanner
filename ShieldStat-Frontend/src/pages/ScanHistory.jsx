@@ -1,12 +1,87 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  CartesianGrid,
+  LabelList,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { getScanHistory } from "../services/api";
 
 function ScanHistory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedDomain, setSelectedDomain] = useState("All Domains");
   const navigate = useNavigate();
+
+  const uniqueDomains = useMemo(() => {
+    const domains = history
+      .map((scan) => (scan.domain || "").trim())
+      .filter(Boolean);
+    return ["All Domains", ...Array.from(new Set(domains))];
+  }, [history]);
+
+  const formatScoreLabel = (value) => {
+    const numericValue = Number(value ?? 0);
+    return Number.isInteger(numericValue) ? String(numericValue) : numericValue.toFixed(1);
+  };
+
+  const renderScoreLabel = (props) => {
+    const { x, y, value } = props;
+
+    if (value === undefined || value === null) return null;
+
+    return (
+      <text
+        x={x}
+        y={y - 10}
+        textAnchor="middle"
+        fill="#4f46e5"
+        fontSize="10"
+        fontWeight="700"
+      >
+        {`${formatScoreLabel(value)}/100`}
+      </text>
+    );
+  };
+
+  const trendData = useMemo(() => {
+    const base = selectedDomain === "All Domains"
+      ? history
+      : history.filter((scan) => (scan.domain || "").trim() === selectedDomain);
+
+    return [...base]
+      .sort((a, b) => new Date(a.scan_date || 0) - new Date(b.scan_date || 0))
+      .map((scan) => ({
+        label: scan.scan_date
+          ? new Date(scan.scan_date).toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "short",
+            })
+          : "Unknown date",
+        fullLabel: scan.scan_date
+          ? new Date(scan.scan_date).toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            })
+          : "Unknown date",
+        score: Number(scan.domain_score ?? 0),
+        domain: (scan.domain || "Unknown").trim(),
+      }));
+  }, [history, selectedDomain]);
+
+  useEffect(() => {
+    if (uniqueDomains.length > 1 && !uniqueDomains.includes(selectedDomain)) {
+      setSelectedDomain(uniqueDomains[1]);
+    }
+  }, [selectedDomain, uniqueDomains]);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -57,6 +132,83 @@ function ScanHistory() {
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
           <p className="text-sm font-semibold text-red-700">{error}</p>
         </div>
+      )}
+
+      {!loading && history.length > 0 && (
+        <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.28em] text-indigo-600">Trend View</p>
+              <h2 className="mt-2 text-xl font-extrabold text-slate-900">Security score trend</h2>
+              <p className="mt-1 text-sm text-slate-600">Track how your security posture changes over time for the selected domain.</p>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+              Domain
+              <select
+                value={selectedDomain}
+                onChange={(e) => setSelectedDomain(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition focus:border-indigo-400 focus:bg-white"
+              >
+                {uniqueDomains.map((domain) => (
+                  <option key={domain} value={domain}>{domain}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {trendData.length > 1 ? (
+            <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/60 p-2 sm:p-3">
+              <div className="h-[18rem] w-full min-w-0 sm:h-[22rem] md:h-[24rem] lg:h-[26rem]">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={220}>
+                  <LineChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "#4f46e5", fontSize: 12 }} />
+                  <YAxis domain={[0, 100]} tickLine={false} axisLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
+                  <Tooltip
+                    trigger="click"
+                    formatter={(value, name, item) => {
+                      const score = Number(item?.payload?.score ?? value ?? 0);
+                      return [
+                        `${formatScoreLabel(score)} / 100`,
+                        item?.payload?.domain ? `${item.payload.domain} score` : name,
+                      ];
+                    }}
+                    labelFormatter={(label, payload) => {
+                      const point = payload?.[0]?.payload;
+                      return point?.fullLabel ? `Scan date: ${point.fullLabel}` : `Scan: ${label}`;
+                    }}
+                    contentStyle={{ borderRadius: 12, borderColor: "#c7d2fe", boxShadow: "0 10px 30px rgba(79, 70, 229, 0.12)" }}
+                    labelStyle={{ color: "#4f46e5", fontWeight: 700 }}
+                    itemStyle={{ color: "#0f172a" }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: "12px" }} />
+                  <Line
+                    type="monotone"
+                    dataKey="score"
+                    stroke="#4f46e5"
+                    strokeWidth={3}
+                    dot={{ r: 5, fill: "#4f46e5", strokeWidth: 2, stroke: "#ffffff" }}
+                    activeDot={{ r: 7, fill: "#312e81", stroke: "#c7d2fe", strokeWidth: 2 }}
+                    name={selectedDomain === "All Domains" ? "Security score" : selectedDomain}
+                  >
+                    <LabelList
+                      dataKey="score"
+                      position="top"
+                      offset={8}
+                      content={renderScoreLabel}
+                    />
+                  </Line>
+                </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
+              Not enough historical data to plot a trend for this domain yet.
+            </div>
+          )}
+        </section>
       )}
 
       {loading ? (
