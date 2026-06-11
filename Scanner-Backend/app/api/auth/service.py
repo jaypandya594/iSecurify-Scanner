@@ -14,6 +14,7 @@ from app.db.models import (
     PromoCode,
     PasswordResetOTP,
     Blacklist,
+    SecurityAlert,
 )
 from app.utils.email import (
     send_invite_email,
@@ -27,6 +28,14 @@ logger = logging.getLogger(__name__)
 JWT_SECRET = os.getenv('JWT_SECRET')
 OTP_EXPIRY_MINUTES = 10
 VERIFICATION_EXPIRY_HOURS = 48
+FAILED_LOGIN_ATTEMPTS = 5
+FAILED_LOGIN_WINDOW_MINUTES = 10
+LOCKOUT_DURATION_MINUTES = 30
+PUBLIC_EMAIL_DOMAINS = {
+    "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com",
+    "mail.com", "aol.com", "icloud.com", "protonmail.com", "zoho.com",
+    "gmx.com", "yandex.com", "inbox.com", "me.com", "msn.com",
+}
 
 def hashPassword(password: str) -> str:
     salt = bcrypt.gensalt(10)
@@ -56,6 +65,28 @@ def decode_token(token: str):
         return payload
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+def _normalize_domain(domain: str) -> str:
+    """Normalize an organization domain for consistent validation."""
+    return domain.strip().lower().replace("https://", "").replace("http://", "").strip("/").lstrip("www.")
+
+
+def _email_domain_matches_org(email_lower: str, domain: str) -> bool:
+    """Ensure the email belongs to the organization domain being registered."""
+    email_domain = email_lower.split("@")[-1].strip().lower()
+    normalized_domain = _normalize_domain(domain)
+
+    if not normalized_domain:
+        return False
+
+    return email_domain == normalized_domain or email_domain.endswith(f".{normalized_domain}")
+
+
+def _is_public_email_domain(email_lower: str) -> bool:
+    """Reject common public email providers for organization signup."""
+    email_domain = email_lower.split("@")[-1].strip().lower()
+    return email_domain in PUBLIC_EMAIL_DOMAINS
+
 
 def _email_domain_has_owner(email_lower: str, db: Session) -> bool:
     """True if a verified owner exists for this email domain (unverified signups do not count)."""
@@ -99,9 +130,21 @@ def register(email: str, password: str, domain: str, db: Session):
     if existing_user and existing_user.email_verified:
         raise HTTPException(status_code=400, detail="User already exists")
 
-    domain = domain.strip().lower()
+    domain = _normalize_domain(domain)
     if not domain:
         raise HTTPException(status_code=400, detail="Domain is required")
+
+    if _is_public_email_domain(email_lower):
+        raise HTTPException(
+            status_code=400,
+            detail="Please use your organization email address for signup. Personal email providers are not allowed.",
+        )
+
+    if not _email_domain_matches_org(email_lower, domain):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Email domain must match your organization domain '{domain}'.",
+        )
 
     if _email_domain_has_owner(email_lower, db):
         email_domain = email_lower.split("@")[-1]
@@ -239,14 +282,58 @@ def login_user(email: str, password: str, db: Session):
     if blocked_user:
         raise HTTPException(status_code=403, detail="This user has been blocked by an admin")
 
-    user = db.query(User).filter(
-        User.email == email_lower
-    ).first()
-
+    user = db.query(User).filter(User.email == email_lower).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    now_utc = datetime.now(timezone.utc)
+    if user.locked_until and user.locked_until.tzinfo is None:
+        user.locked_until = user.locked_until.replace(tzinfo=timezone.utc)
+
+    if user.locked_until and user.locked_until > now_utc:
+        raise HTTPException(
+            status_code=403,
+            detail="This account is temporarily locked due to repeated failed login attempts. Please try again later.",
+        )
+
+    if user.locked_until and user.locked_until <= now_utc:
+        user.locked_until = None
+        user.failed_login_attempts = 0
+        user.last_failed_login_at = None
+
     if not verifyPassword(password, user.password):
+        last_failed_at = user.last_failed_login_at
+        if last_failed_at and last_failed_at.tzinfo is None:
+            last_failed_at = last_failed_at.replace(tzinfo=timezone.utc)
+
+        if not last_failed_at or (now_utc - last_failed_at) > timedelta(minutes=FAILED_LOGIN_WINDOW_MINUTES):
+            user.failed_login_attempts = 1
+        else:
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+
+        user.last_failed_login_at = now_utc
+
+        if user.failed_login_attempts >= FAILED_LOGIN_ATTEMPTS:
+            user.locked_until = now_utc + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+            db.add(
+                SecurityAlert(
+                    severity="high",
+                    message="Repeated failed login attempts detected",
+                    details={
+                        "email": email_lower,
+                        "attempts": user.failed_login_attempts,
+                        "window_minutes": FAILED_LOGIN_WINDOW_MINUTES,
+                        "locked_until": user.locked_until.isoformat(),
+                    },
+                )
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=403,
+                detail="Too many failed login attempts. This account has been locked for 30 minutes.",
+            )
+
+        db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.email_verified:
@@ -254,6 +341,11 @@ def login_user(email: str, password: str, db: Session):
             status_code=401,
             detail="Please verify your email before logging in. Check your inbox for the verification link.",
         )
+
+    user.failed_login_attempts = 0
+    user.last_failed_login_at = None
+    user.locked_until = None
+    db.commit()
 
     access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
     org = (

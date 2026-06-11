@@ -35,7 +35,7 @@ function AdminAudit() {
       const matchesAction = actionFilter === "All actions" || item.action === actionFilter;
       const matchesSearch =
         search.trim().length === 0 ||
-        [adminName, item.action, targetLabel, item.ip_address].some((field) =>
+        [adminName, item.action, targetLabel, item.ip_address, item.public_ip].some((field) =>
           String(field).toLowerCase().includes(search.toLowerCase()),
         );
 
@@ -170,6 +170,7 @@ function AdminAudit() {
                 <th className="px-4 py-3">Action</th>
                 <th className="px-4 py-3">Target</th>
                 <th className="px-4 py-3">IP Address</th>
+                <th className="px-4 py-3">Public IP</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container bg-white">
@@ -184,6 +185,7 @@ function AdminAudit() {
                   </td>
                   <td className="px-4 py-4 text-on-surface-variant">{item.target_id || item.details?.email || "—"}</td>
                   <td className="px-4 py-4 text-on-surface-variant">{item.ip_address || "—"}</td>
+                  <td className="px-4 py-4 text-on-surface-variant">{item.public_ip || item.ip_address || "—"}</td>
                 </tr>
               ))}
             </tbody>

@@ -24,6 +24,9 @@ class User(Base):
     role = Column(String(20), nullable=False, default="owner")
     created_at = Column(TIMESTAMP, server_default=func.now())
     email_verified = Column(Boolean, nullable=False, server_default="true")
+    failed_login_attempts = Column(Integer, nullable=False, default=0)
+    last_failed_login_at = Column(TIMESTAMP, nullable=True)
+    locked_until = Column(TIMESTAMP, nullable=True)
     verification_token = Column(String(255), unique=True, nullable=True)
     verification_expires_at = Column(TIMESTAMP, nullable=True)
     pending_registration_domain = Column(Text, nullable=True)
@@ -88,6 +91,7 @@ class AuditLog(Base):
     target_id = Column(String(100), nullable=True)
     details = Column(JSONB, nullable=True)
     ip_address = Column(String(45), nullable=True)
+    public_ip = Column(String(45), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
 
 

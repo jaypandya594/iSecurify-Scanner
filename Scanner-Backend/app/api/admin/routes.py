@@ -27,13 +27,37 @@ from app.db.models import User
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def get_request_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
+
+
+def get_public_ip(request: Request) -> str | None:
+    public_ip = request.headers.get("x-public-ip")
+    if public_ip:
+        return public_ip.strip()
+
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+
+    return None
+
+
 @router.post("/generate-promo")
 def generate_promo(
     request: Request,
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ):
-    return generate_promo_code(db, current_admin=current_admin, ip_address=request.client.host if request.client else None)
+    return generate_promo_code(db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
 
 
 @router.get("/promo-codes")
@@ -52,7 +76,7 @@ def delete_promo(
     current_admin: User = Depends(require_admin),
 ):
     """Delete a promo code (both used and unused codes can be deleted)"""
-    return delete_promo_code(code, db, current_admin=current_admin, ip_address=request.client.host if request.client else None)
+    return delete_promo_code(code, db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
 
 
 @router.get("/users")
@@ -70,7 +94,7 @@ def create_admin(
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ):
-    return provision_admin_account(req.email, current_admin, db, ip_address=request.client.host if request.client else None)
+    return provision_admin_account(req.email, current_admin, db, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
 
 
 @router.post("/blacklist/block")
@@ -80,7 +104,7 @@ def block_user_by_email(
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ):
-    return block_email(req.email, current_admin, db, ip_address=request.client.host if request.client else None)
+    return block_email(req.email, current_admin, db, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
 
 
 @router.post("/blacklist/unblock")
@@ -90,7 +114,7 @@ def unblock_user_by_email(
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ):
-    return unblock_email(req.email, db, current_admin=current_admin, ip_address=request.client.host if request.client else None)
+    return unblock_email(req.email, db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
 
 
 @router.get("/blacklist")

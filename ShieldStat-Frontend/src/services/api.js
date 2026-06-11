@@ -1,8 +1,19 @@
 const API_BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
-async function request(endpoint, { method = "GET", body, token, signal } = {}) {
+async function getPublicIp() {
+   try {
+      const res = await fetch("https://api.ipify.org?format=json");
+      const data = await res.json();
+      return typeof data?.ip === "string" ? data.ip : null;
+   } catch {
+      return null;
+   }
+}
+
+async function request(endpoint, { method = "GET", body, token, signal, publicIp } = {}) {
    const headers = { "Content-Type": "application/json" };
    if (token) headers["Authorization"] = `Bearer ${token}`;
+   if (publicIp) headers["X-Public-IP"] = publicIp;
 
    const res = await fetch(`${API_BASE}${endpoint}`, {
       method,
@@ -149,10 +160,12 @@ export function getWebSocketUrl(orgId) {
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
-export function generatePromoCode(token) {
+export async function generatePromoCode(token) {
+   const publicIp = await getPublicIp();
    return request("/admin/generate-promo", {
       method: "POST",
       token,
+      publicIp,
    });
 }
 
@@ -176,10 +189,12 @@ export function deleteSubscriptionPlan(planId, token) {
    return request(`/admin/subscription/plans/${encodeURIComponent(planId)}`, { method: "DELETE", token });
 }
 
-export function deletePromoCode(code, token) {
+export async function deletePromoCode(code, token) {
+   const publicIp = await getPublicIp();
    return request(`/admin/promo-codes/${code}/delete`, {
       method: "DELETE",
       token,
+      publicIp,
    });
 }
 
@@ -187,27 +202,33 @@ export function getUsersByOrg(token) {
    return request("/admin/users", { token });
 }
 
-export function createAdmin(email, token) {
+export async function createAdmin(email, token) {
+   const publicIp = await getPublicIp();
    return request("/admin/create-admin", {
       method: "POST",
       body: { email },
       token,
+      publicIp,
    });
 }
 
-export function blockUserByEmail(email, token) {
+export async function blockUserByEmail(email, token) {
+   const publicIp = await getPublicIp();
    return request("/admin/blacklist/block", {
       method: "POST",
       body: { email },
       token,
+      publicIp,
    });
 }
 
-export function unblockUserByEmail(email, token) {
+export async function unblockUserByEmail(email, token) {
+   const publicIp = await getPublicIp();
    return request("/admin/blacklist/unblock", {
       method: "POST",
       body: { email },
       token,
+      publicIp,
    });
 }
 

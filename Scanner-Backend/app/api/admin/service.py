@@ -43,7 +43,16 @@ def _serialize_user(user: User, blocked_emails: set[str]) -> dict:
     }
 
 
-def _record_audit_log(db: Session, admin: User, action: str, target_type: str, target_id: str, details: dict | None = None, ip_address: str | None = None) -> None:
+def _record_audit_log(
+    db: Session,
+    admin: User,
+    action: str,
+    target_type: str,
+    target_id: str,
+    details: dict | None = None,
+    ip_address: str | None = None,
+    public_ip: str | None = None,
+) -> None:
     db.add(
         AuditLog(
             admin_id=admin.user_id,
@@ -51,7 +60,8 @@ def _record_audit_log(db: Session, admin: User, action: str, target_type: str, t
             target_type=target_type,
             target_id=target_id,
             details=details or {},
-            ip_address=ip_address,
+            ip_address=ip_address or public_ip,
+            public_ip=public_ip or ip_address,
         )
     )
     db.commit()
@@ -70,7 +80,7 @@ def _detect_mass_blocking(db: Session, admin: User) -> None:
         .filter(AuditLog.created_at >= window_start)
         .count()
     )
-    if recent_blocks >= 10:
+    if recent_blocks >= 2:
         _maybe_create_alert(
             db,
             severity="high",
@@ -79,7 +89,7 @@ def _detect_mass_blocking(db: Session, admin: User) -> None:
         )
 
 
-def generate_promo_code(db: Session, current_admin: User | None = None, ip_address: str | None = None) -> dict:
+def generate_promo_code(db: Session, current_admin: User | None = None, ip_address: str | None = None, public_ip: str | None = None) -> dict:
     code_str = _generate_promo_string()
 
     while db.query(PromoCode).filter(PromoCode.code == code_str).first():
@@ -104,6 +114,7 @@ def generate_promo_code(db: Session, current_admin: User | None = None, ip_addre
             target_id=promo.code,
             details={"code": promo.code},
             ip_address=ip_address,
+            public_ip=public_ip,
         )
 
     return {
@@ -157,7 +168,7 @@ def get_promo_codes(db: Session) -> list[dict]:
     ]
 
 
-def delete_promo_code(code_str: str, db: Session, current_admin: User | None = None, ip_address: str | None = None) -> dict:
+def delete_promo_code(code_str: str, db: Session, current_admin: User | None = None, ip_address: str | None = None, public_ip: str | None = None) -> dict:
     """Delete a promo code by its code string (both used and unused codes can be deleted)."""
     promo = db.query(PromoCode).filter(PromoCode.code == code_str).first()
 
@@ -184,6 +195,7 @@ def delete_promo_code(code_str: str, db: Session, current_admin: User | None = N
             target_id=promo.code,
             details={"code": promo.code},
             ip_address=ip_address,
+            public_ip=public_ip,
         )
 
     return {
@@ -232,7 +244,7 @@ def get_users_by_org(db: Session) -> dict:
     }
 
 
-def block_email(email: str, current_admin: User, db: Session, ip_address: str | None = None) -> dict:
+def block_email(email: str, current_admin: User, db: Session, ip_address: str | None = None, public_ip: str | None = None) -> dict:
     normalized_email = _normalize_email(email)
 
     if normalized_email == current_admin.email.lower():
@@ -258,6 +270,7 @@ def block_email(email: str, current_admin: User, db: Session, ip_address: str | 
         target_id=normalized_email,
         details={"email": normalized_email, "status": "blocked"},
         ip_address=ip_address,
+        public_ip=public_ip,
     )
     _detect_mass_blocking(db, current_admin)
 
@@ -269,7 +282,7 @@ def block_email(email: str, current_admin: User, db: Session, ip_address: str | 
     }
 
 
-def unblock_email(email: str, db: Session, current_admin: User | None = None, ip_address: str | None = None) -> dict:
+def unblock_email(email: str, db: Session, current_admin: User | None = None, ip_address: str | None = None, public_ip: str | None = None) -> dict:
     normalized_email = _normalize_email(email)
 
     deleted_count = (
@@ -292,6 +305,7 @@ def unblock_email(email: str, db: Session, current_admin: User | None = None, ip
             target_id=normalized_email,
             details={"email": normalized_email, "status": "unblocked"},
             ip_address=ip_address,
+            public_ip=public_ip,
         )
 
     return {
@@ -368,7 +382,8 @@ def get_audit_logs(db: Session) -> list[dict]:
             "target_type": log.target_type,
             "target_id": log.target_id,
             "details": log.details or {},
-            "ip_address": log.ip_address,
+            "ip_address": log.ip_address or log.public_ip,
+            "public_ip": log.public_ip or log.ip_address,
             "created_at": log.created_at.isoformat() if log.created_at else None,
             "admin_email": db.query(User).filter(User.user_id == log.admin_id).first().email if log.admin_id else "System",
         }
@@ -390,7 +405,7 @@ def get_security_alerts(db: Session) -> list[dict]:
     ]
 
 
-def provision_admin_account(email: str, current_admin: User, db: Session, ip_address: str | None = None) -> dict:
+def provision_admin_account(email: str, current_admin: User, db: Session, ip_address: str | None = None, public_ip: str | None = None) -> dict:
     normalized = _normalize_email(email)
 
     if normalized == current_admin.email.lower():
@@ -436,6 +451,7 @@ def provision_admin_account(email: str, current_admin: User, db: Session, ip_add
         target_id=normalized,
         details={"email": normalized, "invited_by": current_admin.email},
         ip_address=ip_address,
+        public_ip=public_ip,
     )
 
     return {
