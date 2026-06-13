@@ -249,18 +249,9 @@ class FixStatus(str, enum.Enum):
     pending = "pending"
     running = "running"
     completed = "completed"
-<<<<<<< Updated upstream
     failed = "failed"
-<<<<<<< HEAD
-=======
-    failed = "failed"   
-
-=======
->>>>>>> tejas
 
 
- 
-    
 class HeaderFixRequest(Base):
     __tablename__ = "header_fix_requests"
 
@@ -377,9 +368,4 @@ class ResolvedFinding(Base):
     __table_args__ = (
         Index("idx_resolved_org", "org_id"),
         Index("idx_resolved_domain", "domain"),
-<<<<<<< HEAD
     )
->>>>>>> Stashed changes
-=======
-    )
->>>>>>> tejas

@@ -341,10 +341,6 @@ export function submitFix(data, token) {
 export function getFixStatus(scanId, token) {
    return request(`/fix/status/${scanId}`, { token });
 }
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
-
 
 export function verifyHeaderFix({ orgId, domain, subdomain, fixType, userId }) {
   return request("/fix/verify-header", {
@@ -387,7 +383,6 @@ export async function getFixRecommendation({ fix_type, technologies = [], tls_ve
   return res.json();
 }
 
-
 export function saveResolvedFinding({ orgId, domain, rule, subdomain, fixType, category }, token) {
   return request("/fix/resolved", {
     method: "POST",
@@ -406,9 +401,3 @@ export function saveResolvedFinding({ orgId, domain, rule, subdomain, fixType, c
 export function getResolvedFindings(domain, token) {
   return request(`/fix/resolved/${encodeURIComponent(domain)}`, { token });
 }
-
->>>>>>> Stashed changes
-=======
-
-
->>>>>>> tejas

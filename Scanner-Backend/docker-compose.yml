@@ -1,4 +1,4 @@
-version: "3.8"
+
 
 services:
   postgres:
@@ -30,26 +30,22 @@ services:
     ports:
       - "8000:8000"
     environment:
-<<<<<<< Updated upstream
-      - DATABASE_URL=${DATABASE_URL}
-=======
-      - DATABASE_URL=postgresql://postgres:Tejas%402584@scanner-postgres:5432/scanner-db
->>>>>>> Stashed changes
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - QUTTERA_API_KEY=${QUTTERA_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY}
-      - QUTTERA_BASE_URL=${QUTTERA_BASE_URL}
-      - FRONTEND_URL= http://localhost:5173/
-      - SMTP_SERVER=${SMTP_SERVER}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - RECAPTCHA_SECRET_KEY=${RECAPTCHA_SECRET_KEY}
-      - RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      QUTTERA_API_KEY: ${QUTTERA_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY}
+      QUTTERA_BASE_URL: ${QUTTERA_BASE_URL}
+      FRONTEND_URL: "http://localhost:5173/"
+      SMTP_SERVER: ${SMTP_SERVER}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY}
+      RECAPTCHA_ENABLED: ${RECAPTCHA_ENABLED}
     volumes:
       - .:/app
     depends_on:
