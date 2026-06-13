@@ -342,6 +342,8 @@ export function getFixStatus(scanId, token) {
    return request(`/fix/status/${scanId}`, { token });
 }
 
+
+
 export function verifyHeaderFix({ orgId, domain, subdomain, fixType, userId }) {
   return request("/fix/verify-header", {
     method: "POST",
