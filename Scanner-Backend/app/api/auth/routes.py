@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.api.auth.schemas import (
-    RegisterRequest, LoginRequest, InviteRequest,
+    RegisterRequest, LoginRequest, VerifyLoginOtpRequest, InviteRequest,
     RedeemPromoRequest, ForgotPasswordOtpRequest,
     ForgotPasswordResetRequest, ResetPasswordRequest,
     AddDomainRequest, VerifyEmailRequest,
@@ -8,7 +8,7 @@ from app.api.auth.schemas import (
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.api.auth.service import (
-    login_user, register, verify_registration, invite_member,
+    login_user, resend_login_otp, verify_login_otp, register, verify_registration, invite_member,
     get_members, redeem_promo_code, add_domain,
     send_forgot_password_otp, verify_otp_and_reset_password,
     reset_password_with_old_password,
@@ -68,6 +68,29 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.post('/login/resend-otp')
+async def resend_login_otp_route(req: LoginRequest, db: Session = Depends(get_db)):
+    try:
+        return resend_login_otp(req.email, req.password, db)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.post('/login/verify-otp')
+async def verify_login_otp_route(req: VerifyLoginOtpRequest, db: Session = Depends(get_db)):
+    if not req.otp:
+        raise HTTPException(status_code=400, detail="Please enter the OTP")
+
+    try:
+        return verify_login_otp(req.email, req.password, req.otp, db)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
 
 @router.post('/forgot-password')
 def forgot_password(req: ForgotPasswordOtpRequest, db: Session = Depends(get_db)):

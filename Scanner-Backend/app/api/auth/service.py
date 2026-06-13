@@ -1,10 +1,12 @@
 import bcrypt
+import json
 import uuid
 import secrets
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 import os
 from fastapi import HTTPException
+from redis import Redis
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.db.models import (
@@ -18,15 +20,25 @@ from app.db.models import (
 )
 from app.utils.email import (
     send_invite_email,
+    send_login_otp_email,
     send_password_reset_otp_email,
     send_registration_verification_email,
 )
 import logging
 
 logger = logging.getLogger(__name__)
+redis_client = Redis(
+    host=os.getenv("REDIS_HOST", "redis"),
+    port=int(os.getenv("REDIS_PORT", "6379")),
+    decode_responses=True,
+)
 
 JWT_SECRET = os.getenv('JWT_SECRET')
 OTP_EXPIRY_MINUTES = 10
+LOGIN_OTP_EXPIRY_SECONDS = 120
+LOGIN_OTP_RESEND_WINDOW_SECONDS = 1200
+LOGIN_OTP_RESEND_LIMIT = 5
+LOGIN_OTP_COOLDOWN_SECONDS = 600
 VERIFICATION_EXPIRY_HOURS = 48
 FAILED_LOGIN_ATTEMPTS = 5
 FAILED_LOGIN_WINDOW_MINUTES = 10
@@ -43,6 +55,18 @@ def hashPassword(password: str) -> str:
 
 def verifyPassword(entered_password: str, stored_hash: str) -> bool:
     return bcrypt.checkpw(entered_password.encode('utf-8'), stored_hash.encode('utf-8'))
+
+def _login_otp_key(email: str) -> str:
+    return f"login_otp:{email.lower().strip()}"
+
+
+def _login_resend_key(email: str) -> str:
+    return f"login_otp_resends:{email.lower().strip()}"
+
+
+def _login_cooldown_key(email: str) -> str:
+    return f"login_otp_cooldown:{email.lower().strip()}"
+
 
 def generateToken(user_id: str, org_id: str = None, role: str = "owner"):
     payload = {
@@ -276,6 +300,43 @@ def verify_registration(token: str, db: Session):
 
     return {"message": "Your email is verified. You can now log in."}
 
+def _issue_login_otp(email_lower: str, user: User, *, track_resend: bool = False) -> None:
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    cooldown_key = _login_cooldown_key(email_lower)
+    if redis_client.exists(cooldown_key):
+        raise HTTPException(status_code=429, detail="Too many OTP requests. Please wait 10 minutes before trying again.")
+
+    otp = f"{secrets.randbelow(1000000):06d}"
+    otp_hash = hashPassword(otp)
+    redis_client.setex(
+        _login_otp_key(email_lower),
+        LOGIN_OTP_EXPIRY_SECONDS,
+        json.dumps({
+            "user_id": user.user_id,
+            "otp_hash": otp_hash,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=LOGIN_OTP_EXPIRY_SECONDS)).isoformat(),
+        }),
+    )
+    if track_resend:
+        resend_key = _login_resend_key(email_lower)
+        redis_client.zremrangebyscore(resend_key, 0, now_ts - LOGIN_OTP_RESEND_WINDOW_SECONDS)
+        resend_count = int(redis_client.zcard(resend_key) or 0)
+        if resend_count >= LOGIN_OTP_RESEND_LIMIT:
+            redis_client.setex(cooldown_key, LOGIN_OTP_COOLDOWN_SECONDS, "1")
+            raise HTTPException(status_code=429, detail="OTP resend limit reached. Please wait 10 minutes before requesting another code.")
+
+        redis_client.zadd(resend_key, {str(now_ts): now_ts})
+        redis_client.expire(resend_key, LOGIN_OTP_RESEND_WINDOW_SECONDS)
+
+    try:
+        send_login_otp_email(to_email=user.email, otp=otp)
+    except Exception as email_err:
+        redis_client.delete(_login_otp_key(email_lower))
+        if track_resend:
+            redis_client.zrem(_login_resend_key(email_lower), str(now_ts))
+        raise HTTPException(status_code=500, detail=f"Failed to send login OTP: {str(email_err)}")
+
+
 def login_user(email: str, password: str, db: Session):
     email_lower = email.lower().strip()
     blocked_user = db.query(Blacklist).filter(Blacklist.email == email_lower).first()
@@ -346,6 +407,60 @@ def login_user(email: str, password: str, db: Session):
     user.last_failed_login_at = None
     user.locked_until = None
     db.commit()
+
+    _issue_login_otp(email_lower, user, track_resend=False)
+
+    return {
+        "requires_otp": True,
+        "message": "A 6-digit login OTP has been sent to your email. Enter it to continue.",
+        "email": user.email,
+    }
+
+
+def resend_login_otp(email: str, password: str, db: Session):
+    email_lower = email.lower().strip()
+    user = db.query(User).filter(User.email == email_lower).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not verifyPassword(password, user.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not user.email_verified:
+        raise HTTPException(status_code=401, detail="Please verify your email before logging in.")
+
+    _issue_login_otp(email_lower, user, track_resend=True)
+    return {"message": "A new login OTP has been sent to your email.", "email": user.email}
+
+
+def verify_login_otp(email: str, password: str, otp: str, db: Session):
+    email_lower = email.lower().strip()
+    user = db.query(User).filter(User.email == email_lower).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not verifyPassword(password, user.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    stored = redis_client.get(_login_otp_key(email_lower))
+    if not stored:
+        raise HTTPException(status_code=400, detail="OTP expired or not found. Please request a new one.")
+
+    try:
+        payload = json.loads(stored)
+    except Exception:
+        redis_client.delete(_login_otp_key(email_lower))
+        raise HTTPException(status_code=400, detail="Invalid OTP session. Please request a new one.")
+
+    expires_at = payload.get("expires_at")
+    if expires_at and datetime.fromisoformat(expires_at).astimezone(timezone.utc) < datetime.now(timezone.utc):
+        redis_client.delete(_login_otp_key(email_lower))
+        raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
+
+    if not verifyPassword(otp.strip(), payload.get("otp_hash", "")):
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    redis_client.delete(_login_otp_key(email_lower))
 
     access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
     org = (

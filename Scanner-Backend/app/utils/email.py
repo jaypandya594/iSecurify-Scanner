@@ -256,6 +256,44 @@ def send_registration_verification_email(to_email: str, verify_url: str):
     return True
 
 
+def send_login_otp_email(to_email: str, otp: str):
+    if not SMTP_USER or not SMTP_PASSWORD:
+        raise ValueError("SMTP_USER and SMTP_PASSWORD must be strictly configured in .env to dispatch emails.")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Domain Scanner login OTP"
+    msg["From"] = f"Domain Scanner <{SMTP_USER}>"
+    msg["To"] = to_email
+
+    plain_text = f"Your Domain Scanner login OTP is {otp}. It expires in 2 minutes."
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; color: #222;">
+        <p>Your one-time password for Domain Scanner sign-in is:</p>
+        <p style="font-size: 28px; font-weight: 700; letter-spacing: 2px;">{otp}</p>
+        <p>This OTP expires in 2 minutes.</p>
+        <p>If you did not try to sign in, you can ignore this email.</p>
+    </body>
+    </html>
+    """
+
+    msg.attach(MIMEText(plain_text, "plain"))
+    msg.attach(MIMEText(html_content, "html"))
+
+    server = None
+    try:
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_USER, to_email, msg.as_string())
+    finally:
+        if server:
+            server.quit()
+
+    return True
+
+
 def send_password_reset_otp_email(to_email: str, otp: str):
     if not SMTP_USER or not SMTP_PASSWORD:
         raise ValueError("SMTP_USER and SMTP_PASSWORD must be strictly configured in .env to dispatch emails.")

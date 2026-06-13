@@ -12,6 +12,13 @@ class LoginRequest(BaseModel):
     password: str
     captcha_token: str | None = None
 
+
+class VerifyLoginOtpRequest(BaseModel):
+    email: EmailStr
+    password: str
+    otp: str
+    captcha_token: str | None = None
+
 class InviteRequest(BaseModel):
     email: EmailStr
 
