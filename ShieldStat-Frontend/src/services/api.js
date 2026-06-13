@@ -327,7 +327,6 @@ export function saveAssessment(body, token) {
    });
 }
 
-// ─── Fix (port verification queue) ───────────────────────────────────────────
 
 // ─── Fix (port verification queue) ───────────────────────────────────────────
 
@@ -342,3 +341,69 @@ export function submitFix(data, token) {
 export function getFixStatus(scanId, token) {
    return request(`/fix/status/${scanId}`, { token });
 }
+<<<<<<< Updated upstream
+=======
+
+
+export function verifyHeaderFix({ orgId, domain, subdomain, fixType, userId }) {
+  return request("/fix/verify-header", {
+    method: "POST",
+    body: {
+      org_id: orgId,
+      domain,
+      subdomain,
+      fix_type: fixType,
+      user_id: userId ?? null,
+    },
+  });
+}
+
+export function verifyTlsFix({ orgId, domain, subdomain, fixType, userId }) {
+  return request("/fix/verify-tls", {
+    method: "POST",
+    body: {
+      org_id: orgId,
+      domain,
+      subdomain,
+      fix_type: fixType,
+      user_id: userId ?? null,
+    },
+  });
+}
+
+export async function getFixRecommendation({ fix_type, technologies = [], tls_version = null, subdomain = null }) {
+  const res = await fetch(`${API_BASE}/fix/recommendation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fix_type, technologies, tls_version, subdomain }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.detail || `Failed to load fix guide (${res.status})`);
+  }
+
+  return res.json();
+}
+
+
+export function saveResolvedFinding({ orgId, domain, rule, subdomain, fixType, category }, token) {
+  return request("/fix/resolved", {
+    method: "POST",
+    body: {
+      org_id: orgId,
+      domain,
+      rule,
+      subdomain,
+      fix_type: fixType,
+      category,
+    },
+    token,
+  });
+}
+
+export function getResolvedFindings(domain, token) {
+  return request(`/fix/resolved/${encodeURIComponent(domain)}`, { token });
+}
+
+>>>>>>> Stashed changes

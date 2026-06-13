@@ -56,7 +56,7 @@ app.include_router(fix_router)
 app.include_router(admin_router)
 app.include_router(webhook_scanner_router)
 app.include_router(malware_router)
-app.include_router(fix_router)
+
 
 if __name__ == "__main__":
     import uvicorn

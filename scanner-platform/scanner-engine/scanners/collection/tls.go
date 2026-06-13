@@ -49,7 +49,7 @@ func (f *TLSDataCollection) RunCollectionScanner(
 	domain string,
 ) (core.Result, error) {
 
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	empty := core.Result{

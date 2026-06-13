@@ -132,6 +132,13 @@ def evaluate_tls(port):
             issues.append("443 open without TLS")
         return penalty, issues
 
+    # tls exists but Enabled is explicitly False
+    if isinstance(tls, dict) and tls.get("enabled") is False:
+        if port.get("port") == 443:
+            penalty += 20
+            issues.append("443 open without TLS")
+        return penalty, issues
+
     version = (tls.get("version") or "").lower()
 
     if tls.get("expired"):

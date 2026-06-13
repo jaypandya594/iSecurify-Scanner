@@ -1,16 +1,22 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone 
 from sqlalchemy.orm import Session
 from app.core.websocket_manager import ws_manager
 from app.db.models import (
-    ScanSummary, 
-    PortFixRequest, 
+    ScanSummary,
+    PortFixRequest,
+    HeaderFixRequest,
+    TlsFixRequest,
 )
 from app.core.redis_queue import redis_client
 from collections import defaultdict
 from app.api.analyzer.controller import get_cvss_severity
 from fastapi import HTTPException
+
+import ssl
+import socket
+import httpx
 
 # ✅ FIXED FUNCTION #1 - Create fix request in database (with validation)
 async def create_fix_request_in_db(
@@ -155,8 +161,9 @@ def apply_fix_result(
         return fail
 
     # ✅ Get the scan summary
+    # ✅ Get the scan summary
     summary = db.query(ScanSummary).filter(
-        ScanSummary.domain == domain
+        ScanSummary.org_id == org_id
     ).first()
 
     if not summary:
@@ -224,6 +231,15 @@ def _remove_fixed_issue(
     
     if not findings:
         return False
+    import logging
+    logging.getLogger(__name__).info(
+        f"[remove_fixed_issue] looking for subdomain='{domain}' "
+        f"in {len(findings)} findings under '{issue_key}'"
+    )
+    for f in findings:
+        logging.getLogger(__name__).info(f"  stored: '{f.get('subdomain')}'")
+
+
 
     # Filter out the fixed finding
     updated = [f for f in findings if f.get("subdomain") != domain]
@@ -362,3 +378,245 @@ ALLOWED_CATEGORIES = {
     "tls_security", 
     "dns_security"
 }
+
+
+
+
+# ── Header name map ───────────────────────────────────────────────────────────
+
+HEADER_FIX_TYPE_TO_HEADER_NAME: dict[str, str] = {
+    "missing_csp":       "content-security-policy",
+    "missing_hsts":      "strict-transport-security",
+    "missing_x_frame":   "x-frame-options",
+    "missing_x_content": "x-content-type-options",
+}
+
+
+# ── Helper: probe HTTP headers ────────────────────────────────────────────────
+
+async def _fetch_headers(subdomain: str) -> dict[str, str]:
+    """
+    Return response headers (lowercased keys) for the given subdomain.
+    Tries HTTPS first, falls back to HTTP.
+    Raises httpx.HTTPError on complete failure.
+    """
+    for scheme in ("https", "http"):
+        url = f"{scheme}://{subdomain}"
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=10,
+                verify=False,           # cert validity checked separately in TLS path
+            ) as client:
+                resp = await client.get(url)
+                return {k.lower(): v for k, v in resp.headers.items()}
+        except httpx.ConnectError:
+            continue
+    raise httpx.ConnectError(f"Could not reach {subdomain} over HTTPS or HTTP")
+
+
+# ── Helper: probe TLS ─────────────────────────────────────────────────────────
+
+def _check_tls(subdomain: str, fix_type: str) -> bool:
+    """
+    Returns True if the TLS issue identified by fix_type is now resolved.
+
+    fix_type semantics:
+        expired_tls     → cert expiry date is in the future
+        weak_tls        → negotiated protocol is TLSv1.2 or TLSv1.3
+        tls_missing_443 → port 443 is open and a valid TLS handshake succeeds
+    """
+    ctx = ssl.create_default_context()
+
+    try:
+        with socket.create_connection((subdomain, 443), timeout=10) as sock:
+            with ctx.wrap_socket(sock, server_hostname=subdomain) as ssock:
+                protocol = ssock.version()          # e.g. "TLSv1.3"
+                cert = ssock.getpeercert()
+
+                if fix_type == "tls_missing_443":
+                    return True                     # handshake succeeded → port open + TLS present
+
+                if fix_type == "expired_tls":
+                    not_after_str = cert.get("notAfter", "")
+                    not_after = datetime.strptime(not_after_str, "%b %d %H:%M:%S %Y %Z")
+                    return not_after.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc)
+
+                if fix_type == "weak_tls":
+                    return protocol in ("TLSv1.2", "TLSv1.3")
+
+    except (ssl.SSLError, socket.timeout, ConnectionRefusedError, OSError):
+        return False
+
+    return False
+
+
+# ── Public: verify header fix ─────────────────────────────────────────────────
+
+async def verify_header_fix(
+    org_id: str,
+    domain: str,
+    subdomain: str,
+    fix_type: str,
+    db,
+    user_id: str = None,
+) -> dict:
+    """
+    1. Validates the fix_type.
+    2. Probes the subdomain for the expected header.
+    3. Persists a HeaderFixRequest record.
+    4. If header is present → calls apply_fix_result() to update scan_summary score.
+    5. Returns a result dict consumed directly by the route.
+    """
+    header_name = HEADER_FIX_TYPE_TO_HEADER_NAME.get(fix_type)
+    if not header_name:
+        raise ValueError(f"Unknown header fix_type: {fix_type!r}")
+
+    # ── Resolve root domain from DB (same pattern as port fix) ───────────────
+    from app.db.models import ScanSummary
+    from fastapi import HTTPException
+
+    scan_record = db.query(ScanSummary).filter(ScanSummary.org_id == org_id).first()
+    if not scan_record:
+        raise HTTPException(
+            status_code=400,
+            detail="No scan found for this organization. Please run a scan first.",
+        )
+    root_domain = scan_record.domain
+
+    # ── Probe headers ─────────────────────────────────────────────────────────
+    scan_id = str(uuid.uuid4())
+    header_present = False
+    status = "failed"
+
+    try:
+        headers = await _fetch_headers(subdomain)
+        header_present = header_name in headers
+        status = "completed"
+    except Exception:
+        status = "failed"
+
+    # ── Persist record ────────────────────────────────────────────────────────
+    fix_record = HeaderFixRequest(
+        scan_id=scan_id,
+        org_id=org_id,
+        user_id=user_id,
+        domain=root_domain,
+        fix_type=fix_type,
+        status=status,
+        header_present=header_present,
+        verification_scan_time=datetime.now(timezone.utc),
+    )
+    db.add(fix_record)
+    db.commit()
+
+    # ── Update score if fixed ─────────────────────────────────────────────────
+    score_update: dict = {}
+    if header_present:
+        score_update = apply_fix_result(
+            org_id=org_id,
+            domain=subdomain,
+            fix_type=fix_type,
+            result={"status": "closed"},        # reuse existing helper; "closed" → success
+            db=db,
+            scan_id=scan_id,
+        )
+
+    return {
+        "ok": True,
+        "scan_id": scan_id,
+        "header_present": header_present,
+        "status": status,
+        "domain_score": score_update.get("domain_score"),
+        "severity": score_update.get("severity"),
+        "message": (
+            f"Header '{header_name}' detected — fix confirmed. Score updated."
+            if header_present
+            else f"Header '{header_name}' still missing on {subdomain}."
+        ),
+    }
+
+
+# ── Public: verify TLS fix ────────────────────────────────────────────────────
+
+async def verify_tls_fix(
+    org_id: str,
+    domain: str,
+    subdomain: str,
+    fix_type: str,
+    db,
+    user_id: str = None,
+) -> dict:
+    """
+    1. Validates the fix_type.
+    2. Probes the subdomain TLS state.
+    3. Persists a TlsFixRequest record.
+    4. If resolved → calls apply_fix_result() to update scan_summary score.
+    5. Returns a result dict consumed directly by the route.
+    """
+    from app.db.models import ScanSummary
+    from fastapi import HTTPException
+
+    VALID_TLS_FIX_TYPES = {"expired_tls", "weak_tls", "tls_missing_443"}
+    if fix_type not in VALID_TLS_FIX_TYPES:
+        raise ValueError(f"Unknown TLS fix_type: {fix_type!r}")
+
+    # ── Resolve root domain ───────────────────────────────────────────────────
+    scan_record = db.query(ScanSummary).filter(ScanSummary.org_id == org_id).first()
+    if not scan_record:
+        raise HTTPException(
+            status_code=400,
+            detail="No scan found for this organization. Please run a scan first.",
+        )
+    root_domain = scan_record.domain
+
+    # ── Probe TLS ─────────────────────────────────────────────────────────────
+    scan_id = str(uuid.uuid4())
+    tls_ok = False
+    status = "failed"
+
+    try:
+        tls_ok = _check_tls(subdomain, fix_type)
+        status = "completed"
+    except Exception:
+        status = "failed"
+
+    # ── Persist record ────────────────────────────────────────────────────────
+    fix_record = TlsFixRequest(
+        scan_id=scan_id,
+        org_id=org_id,
+        user_id=user_id,
+        domain=root_domain,
+        fix_type=fix_type,
+        status=status,
+        tls_ok=tls_ok,
+        verification_scan_time=datetime.now(timezone.utc),
+    )
+    db.add(fix_record)
+    db.commit()
+
+    # ── Update score if fixed ─────────────────────────────────────────────────
+    score_update: dict = {}
+    if tls_ok:
+        score_update = apply_fix_result(
+            org_id=org_id,
+            domain=subdomain,
+            fix_type=fix_type,
+            result={"status": "closed"},
+            db=db,
+            scan_id=scan_id,
+        )
+
+    return {
+        "ok": True,
+        "scan_id": scan_id,
+        "tls_ok": tls_ok,
+        "status": status,
+        "domain_score": score_update.get("domain_score"),
+        "severity": score_update.get("severity"),
+        "message": (
+            f"TLS issue '{fix_type}' resolved on {subdomain}. Score updated."
+            if tls_ok
+            else f"TLS issue '{fix_type}' still present on {subdomain}."
+        ),
+    }
