@@ -327,7 +327,6 @@ export function saveAssessment(body, token) {
    });
 }
 
-// ─── Fix (port verification queue) ───────────────────────────────────────────
 
 // ─── Fix (port verification queue) ───────────────────────────────────────────
 
@@ -342,3 +341,5 @@ export function submitFix(data, token) {
 export function getFixStatus(scanId, token) {
    return request(`/fix/status/${scanId}`, { token });
 }
+
+

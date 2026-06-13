@@ -250,3 +250,124 @@ class FixStatus(str, enum.Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
+
+
+ 
+    
+class HeaderFixRequest(Base):
+    __tablename__ = "header_fix_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    scan_id = Column(String(255), nullable=False, unique=True)
+
+    org_id = Column(
+        String(36),
+        ForeignKey("organizations.org_id"),
+        nullable=False,
+    )
+
+    user_id = Column(
+        String(36),
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+
+    domain = Column(
+        Text,
+        ForeignKey("scan_summary.domain"),
+        nullable=False,
+    )
+
+    # e.g. "missing_csp", "missing_hsts", "missing_x_frame", "missing_x_content"
+    fix_type = Column(String(50), nullable=False)
+
+    status = Column(String(50), nullable=False, default="pending")
+
+    # True = header now present (fix confirmed), False = still missing
+    header_present = Column(Boolean, nullable=True)
+
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    verification_scan_time = Column(TIMESTAMP, nullable=True)
+
+    updated_at = Column(
+        TIMESTAMP,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("idx_headerfix_scan", "scan_id"),
+        Index("idx_headerfix_org", "org_id"),
+        Index("idx_headerfix_domain", "domain"),
+        Index("idx_headerfix_status", "status"),
+    )
+
+
+class TlsFixRequest(Base):
+    __tablename__ = "tls_fix_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    scan_id = Column(String(255), nullable=False, unique=True)
+
+    org_id = Column(
+        String(36),
+        ForeignKey("organizations.org_id"),
+        nullable=False,
+    )
+
+    user_id = Column(
+        String(36),
+        ForeignKey("users.user_id"),
+        nullable=True,
+    )
+
+    domain = Column(
+        Text,
+        ForeignKey("scan_summary.domain"),
+        nullable=False,
+    )
+
+    # e.g. "expired_tls", "weak_tls", "tls_missing_443"
+    fix_type = Column(String(50), nullable=False)
+
+    status = Column(String(50), nullable=False, default="pending")
+
+    # True = TLS issue resolved, False = still present
+    tls_ok = Column(Boolean, nullable=True)
+
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    verification_scan_time = Column(TIMESTAMP, nullable=True)
+
+    updated_at = Column(
+        TIMESTAMP,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("idx_tlsfix_scan", "scan_id"),
+        Index("idx_tlsfix_org", "org_id"),
+        Index("idx_tlsfix_domain", "domain"),
+        Index("idx_tlsfix_status", "status"),
+    )
+
+class ResolvedFinding(Base):
+    __tablename__ = "resolved_findings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=False)
+    domain = Column(Text, ForeignKey("scan_summary.domain"), nullable=False)
+    rule = Column(String(255), nullable=False)
+    subdomain = Column(String(255), nullable=False)
+    fix_type = Column(String(50), nullable=False)
+    category = Column(String(100), nullable=False)
+    resolved_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("idx_resolved_org", "org_id"),
+        Index("idx_resolved_domain", "domain"),
+    )

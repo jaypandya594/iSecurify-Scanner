@@ -6,15 +6,24 @@ from sqlalchemy.orm import Session
 from app.core.redis_queue import RedisClient
 from app.core.middleware import protect
 from app.db.base import get_db
-from app.db.models import User
+from app.db.models import User, ResolvedFinding
 from app.api.fix.schemas import (
-    FixRequest, 
-    FixSubmitResponse, 
-    FixResultRequest, 
+    FixRequest,
+    FixSubmitResponse,
+    FixResultRequest,
     FixResultResponse,
-    PortFixRequestSchema
+    PortFixRequestSchema,
+    RecommendationRequest,
 )
 from app.api.fix.service import queue_fix_job
+
+from app.api.fix.schemas import (
+    HeaderVerifyRequest,
+    HeaderVerifyResponse,
+    TlsVerifyRequest,
+    TlsVerifyResponse,
+)
+from app.api.fix.service import verify_header_fix, verify_tls_fix
 
 logger = logging.getLogger(__name__)
 
@@ -197,3 +206,138 @@ def health_check():
         "status": "ok",
         "service": "fix-queue"
     }
+
+@router.post("/verify-header", response_model=HeaderVerifyResponse)
+async def verify_header(
+    payload: HeaderVerifyRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Directly verify whether a security header is now present on a subdomain.
+
+    No Redis queue — FastAPI probes the URL inline (fast, < 10 s).
+
+    fix_type values accepted:
+        missing_csp | missing_hsts | missing_x_frame | missing_x_content
+
+    Returns immediately with:
+        - header_present: bool
+        - domain_score / severity (updated if fix confirmed)
+    """
+    try:
+        result = await verify_header_fix(
+            org_id=payload.org_id,
+            domain=payload.domain,
+            subdomain=payload.subdomain,
+            fix_type=payload.fix_type,
+            db=db,
+            user_id=payload.user_id,
+        )
+        return HeaderVerifyResponse(**result)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"verify_header error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Header verification failed: {e}")
+
+
+@router.post("/verify-tls", response_model=TlsVerifyResponse)
+async def verify_tls(
+    payload: TlsVerifyRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Directly verify whether a TLS issue is now resolved on a subdomain.
+
+    No Redis queue — FastAPI opens a TLS socket inline (fast, < 10 s).
+
+    fix_type values accepted:
+        expired_tls | weak_tls | tls_missing_443
+
+    Returns immediately with:
+        - tls_ok: bool
+        - domain_score / severity (updated if fix confirmed)
+    """
+    try:
+        result = await verify_tls_fix(
+            org_id=payload.org_id,
+            domain=payload.domain,
+            subdomain=payload.subdomain,
+            fix_type=payload.fix_type,
+            db=db,
+            user_id=payload.user_id,
+        )
+        return TlsVerifyResponse(**result)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"verify_tls error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"TLS verification failed: {e}")
+
+@router.post("/recommendation")
+async def get_fix_recommendation(payload: RecommendationRequest):
+    from app.api.fix.remediation import generate_remediation
+    return generate_remediation(
+        payload.fix_type,
+        payload.technologies,
+        payload.tls_version,
+        payload.subdomain,
+    )
+
+@router.post("/resolved")
+def save_resolved_finding(
+    payload: dict,
+    db: Session = Depends(get_db),
+):
+    """Save a verified/resolved finding to the database."""
+    existing = db.query(ResolvedFinding).filter(
+        ResolvedFinding.org_id == payload["org_id"],
+        ResolvedFinding.domain == payload["domain"],
+        ResolvedFinding.rule == payload["rule"],
+        ResolvedFinding.subdomain == payload["subdomain"],
+    ).first()
+
+    if not existing:
+        resolved = ResolvedFinding(
+            org_id=payload["org_id"],
+            domain=payload["domain"],
+            rule=payload["rule"],
+            subdomain=payload["subdomain"],
+            fix_type=payload["fix_type"],
+            category=payload["category"],
+        )
+        db.add(resolved)
+        db.commit()
+
+    return {"ok": True}
+
+
+@router.get("/resolved/{domain}")
+def get_resolved_findings(
+    domain: str,
+    db: Session = Depends(get_db),
+):
+    """Get all resolved findings for a domain."""
+    findings = db.query(ResolvedFinding).filter(
+        ResolvedFinding.domain == domain,
+    ).order_by(ResolvedFinding.resolved_at.desc()).all()
+
+    return [
+        {
+            "id": f.id,
+            "org_id": f.org_id,
+            "domain": f.domain,
+            "rule": f.rule,
+            "subdomain": f.subdomain,
+            "fix_type": f.fix_type,
+            "category": f.category,
+            "resolved_at": f.resolved_at,
+        }
+        for f in findings
+    ]
