@@ -341,6 +341,7 @@ export function submitFix(data, token) {
 export function getFixStatus(scanId, token) {
    return request(`/fix/status/${scanId}`, { token });
 }
+<<<<<<< HEAD
 <<<<<<< Updated upstream
 =======
 
@@ -407,3 +408,7 @@ export function getResolvedFindings(domain, token) {
 }
 
 >>>>>>> Stashed changes
+=======
+
+
+>>>>>>> tejas

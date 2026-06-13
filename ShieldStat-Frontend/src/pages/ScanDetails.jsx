@@ -1197,6 +1197,7 @@ function ScanDetails() {
 
   if (error || !data) {
     return (
+<<<<<<< HEAD
 <<<<<<< Updated upstream
       <button
         type="button"
@@ -1392,107 +1393,109 @@ function ScanDetails() {
               progress_activity
             </span>
             <p className="text-sm font-bold uppercase tracking-widest text-slate-500">Loading scan data…</p>
+=======
+      <div className="min-h-screen bg-surface">
+        <main className="flex-1 overflow-y-auto pt-6 sm:pt-8 pb-16 px-4 sm:px-6 lg:px-12 max-w-[1600px] mx-auto w-full">
+          {knownDomains.length > 0 && (
+            <section className="mb-8">
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                <h3 className="text-sm uppercase tracking-widest text-on-surface-variant font-bold">
+                  Domains
+                </h3>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+                {knownDomains.map((knownDomain) => (
+                  <DomainTab
+                    key={knownDomain}
+                    domain={knownDomain}
+                    isActive={knownDomain.toLowerCase() === domain.toLowerCase()}
+                    onClick={() => handleDomainSelect(knownDomain)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+            <span className="material-symbols-outlined text-5xl text-slate-400">search_off</span>
+            <p className="mt-4 text-lg font-bold text-slate-700">
+              {error || "No scan data available."}
+            </p>
+            <Link
+              to="/scan"
+              className="mt-6 inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all"
+            >
+              <span className="material-symbols-outlined text-base">radar</span>
+              Run a New Scan
+            </Link>
+>>>>>>> tejas
           </div>
-        </div>
-      );
-    }
+        </main>
+      </div>
+    );
+  }
 
-    if (error || !data) {
-      return (
-        <div className="min-h-screen bg-surface">
-          <main className="flex-1 overflow-y-auto pt-6 sm:pt-8 pb-16 px-4 sm:px-6 lg:px-12 max-w-[1600px] mx-auto w-full">
-            {knownDomains.length > 0 && (
-              <section className="mb-8">
-                <div className="mb-3 flex flex-wrap items-center gap-3">
-                  <h3 className="text-sm uppercase tracking-widest text-on-surface-variant font-bold">Domains</h3>
-                </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-                  {knownDomains.map((knownDomain) => (
-                    <DomainTab
-                      key={knownDomain}
-                      domain={knownDomain}
-                      isActive={knownDomain.toLowerCase() === domain.toLowerCase()}
-                      onClick={() => handleDomainSelect(knownDomain)}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-              <span className="material-symbols-outlined text-5xl text-slate-400">search_off</span>
-              <p className="mt-4 text-lg font-bold text-slate-700">{error || "No scan data available."}</p>
-              <Link to="/scan" className="mt-6 inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all">
-                <span className="material-symbols-outlined text-base">radar</span>
-                Run a New Scan
-              </Link>
-            </div>
-          </main>
-        </div>
-      );
-    }
+  const vulnCategories = parseCategorized(data.categorized_vulnerabilities);
 
-    // ── Parse vulnerability categories ────────────────────────────────────────
+  const severityOrder = ["critical", "high", "medium", "low"];
+  const worstIpSev = ipReps.length
+    ? severityOrder.find((s) =>
+        ipReps.some((r) => getReputationSeverity(r.abuseConfidenceScore) === s),
+      ) || null
+    : null;
 
-    const vulnCategories = parseCategorized(data.categorized_vulnerabilities);
+  const ipRepCategory = {
+    name: "IP Reputation",
+    isIpRep: true,
+    findings: ipReps,
+    worstSev: worstIpSev,
+    severity: worstIpSev || "info",
+  };
 
-    // ── IP Reputation category ────────────────────────────────────────────────
+  const resolvedCategory = {
+    name: "Resolved",
+    isResolved: true,
+    findings: [],
+    severity: "info",
+  };
 
-    const severityOrder = ["critical", "high", "medium", "low"];
-    const worstIpSev = ipReps.length
-      ? severityOrder.find((s) => ipReps.some((r) => getReputationSeverity(r.abuseConfidenceScore) === s)) || null
-      : null;
+  const allCategories = [...vulnCategories, ipRepCategory, resolvedCategory];
+  const validNames      = allCategories.map((c) => c.name);
+  const resolvedActive  = validNames.includes(activeCatName) ? activeCatName : validNames[0];
+  const activeCat       = allCategories.find((c) => c.name === resolvedActive) || null;
 
-    const ipRepCategory = {
-      name: "IP Reputation",
-      isIpRep: true,
-      findings: ipReps,
-      worstSev: worstIpSev,
-      severity: worstIpSev || "info",
-    };
+  const score  = data.domain_score ?? 0;
+  const grade  = getScoreGrade(score);
 
-    const allCategories = [...vulnCategories, ipRepCategory];
-
-    // Ensure a valid active category name
-    const validNames = allCategories.map((c) => c.name);
-    const resolvedActive = validNames.includes(activeCatName) ? activeCatName : validNames[0];
-    const activeCat = allCategories.find((c) => c.name === resolvedActive) || null;
-
-    const score = data.domain_score ?? 0;
-    const grade = getScoreGrade(score);
-
-    // Find the IP of the root domain (not just any subdomain) by scanning all vuln host entries
-    const rootDomain = (data.host?.domain || domain).toLowerCase();
-    let rootIp = null;
-    outer: for (const rules of Object.values(data.categorized_vulnerabilities || {})) {
-      for (const hosts of Object.values(rules || {})) {
-        if (!Array.isArray(hosts)) continue;
-        for (const h of hosts) {
-          if (h.subdomain?.toLowerCase() === rootDomain && h.ip) {
-            rootIp = h.ip;
-            break outer;
-          }
+  const rootDomain = (data.host?.domain || domain).toLowerCase();
+  let rootIp = null;
+  outer: for (const rules of Object.values(data.categorized_vulnerabilities || {})) {
+    for (const hosts of Object.values(rules || {})) {
+      if (!Array.isArray(hosts)) continue;
+      for (const h of hosts) {
+        if (h.subdomain?.toLowerCase() === rootDomain && h.ip) {
+          rootIp = h.ip;
+          break outer;
         }
       }
     }
-    if (!rootIp && ipReps.length > 0) {
-      // If IP reputation was fetched, the first IP checked may correspond to the root domain
-      // Use the first resolved ip as a best-effort fallback
-      rootIp = ipReps[0]?.ip || null;
-    }
-    const primaryIp = rootIp || (data.ips || [])[0] || "—";
+  }
+  if (!rootIp && ipReps.length > 0) rootIp = ipReps[0]?.ip || null;
+  const primaryIp = rootIp || (data.ips || [])[0] || "—";
 
-    const totalFindings =
-      vulnCategories.reduce((sum, c) => sum + c.findings.reduce((s, f) => s + f.hosts.length, 0), 0) +
-      ipReps.filter((r) => r.abuseConfidenceScore > 0).length;
+  const totalFindings =
+    vulnCategories.reduce(
+      (sum, c) => sum + c.findings.reduce((s, f) => s + f.hosts.length, 0),
+      0,
+    ) + ipReps.filter((r) => r.abuseConfidenceScore > 0).length;
 
-    const activeCfg = activeCat?.isIpRep
-      ? worstIpSev === null ? CLEAN_CONFIG : getSeverityConfig(worstIpSev)
-      : getSeverityConfig(activeCat?.severity || "info");
+  const activeCfg = activeCat?.isIpRep
+    ? worstIpSev === null ? CLEAN_CONFIG : getSeverityConfig(worstIpSev)
+    : getSeverityConfig(activeCat?.severity || "info");
 
-    const authToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const authToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-    const handleDownloadReport = async () => {
-      if (!data) return;
+  const handleDownloadReport = async () => {
+    if (!data) return;
 
       const [{ jsPDF }, { default: autoTable }] = await Promise.all([
         import("jspdf"),
@@ -1523,156 +1526,126 @@ function ScanDetails() {
         console.error("Error loading logo:", e);
       }
 
-      doc.setFontSize(22);
-      doc.setTextColor(40);
-      doc.text("Security Scan Report", 14, currentY);
-      currentY += 10;
-      
-      doc.setFontSize(12);
-      doc.text(`Domain: ${data.host?.domain || domain}`, 14, currentY);
-      doc.text(`Score: ${data.domain_score} / 100 (${grade.label})`, 14, currentY + 7);
-      doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, currentY + 14);
-      
-      currentY += 25;
+    doc.setFontSize(22);
+    doc.setTextColor(40);
+    doc.text("Security Scan Report", 14, currentY);
+    currentY += 10;
 
-      const summaryData = [];
-      const expectedCats = [
-        "Application Security",
-        "Network Security",
-        "TLS Security",
-        "DNS Security",
-        "IP Reputation"
-      ];
-      
-      expectedCats.forEach(catName => {
-        const cat = allCategories.find(c => c.name === catName);
-        let countText = "0 findings";
-        if (cat) {
-          if (cat.isIpRep) {
-            countText = `${cat.findings.length} IPs`;
-          } else {
-            const count = cat.findings.reduce((s, f) => s + f.hosts.length, 0);
-            countText = `${count} finding${count !== 1 ? "s" : ""}`;
-          }
-        } else if (catName === "IP Reputation") {
-          countText = "0 IPs";
-        }
-        summaryData.push([catName, countText]);
-      });
+    doc.setFontSize(12);
+    doc.text(`Domain: ${data.host?.domain || domain}`, 14, currentY);
+    doc.text(`Score: ${data.domain_score} / 100 (${grade.label})`, 14, currentY + 7);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, currentY + 14);
+    currentY += 25;
 
-      doc.setFontSize(18);
-      doc.text("Executive Summary", 14, currentY);
+    const expectedCats = [
+      "Application Security", "Network Security", "TLS Security",
+      "DNS Security", "IP Reputation",
+    ];
+    const summaryData = expectedCats.map((catName) => {
+      const cat = allCategories.find((c) => c.name === catName);
+      if (!cat) return [catName, "0 findings"];
+      if (cat.isIpRep) return [catName, `${cat.findings.length} IPs`];
+      const count = cat.findings.reduce((s, f) => s + f.hosts.length, 0);
+      return [catName, `${count} finding${count !== 1 ? "s" : ""}`];
+    });
+
+    doc.setFontSize(18);
+    doc.text("Executive Summary", 14, currentY);
+    currentY += 5;
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Category", "Summary"]],
+      body: summaryData,
+      theme: "grid",
+      headStyles: { fillColor: [79, 70, 229] },
+    });
+    currentY = doc.lastAutoTable.finalY + 15;
+
+    allCategories.forEach((cat) => {
+      if (currentY > doc.internal.pageSize.getHeight() - 30) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      doc.setFontSize(16);
+      doc.text(cat.name, 14, currentY);
       currentY += 5;
-      
-      autoTable(doc, {
-        startY: currentY,
-        head: [['Category', 'Summary']],
-        body: summaryData,
-        theme: 'grid',
-        headStyles: { fillColor: [79, 70, 229] }
-      });
-      currentY = doc.lastAutoTable.finalY + 15;
 
-      allCategories.forEach(cat => {
-        // Create a page break if needed
-        if (currentY > doc.internal.pageSize.getHeight() - 30) {
-          doc.addPage();
-          currentY = 20;
-        }
-
-        doc.setFontSize(16);
-        doc.text(cat.name, 14, currentY);
-        currentY += 5;
-
-        if (cat.isIpRep) {
-          if (ipReps.length === 0) {
-            doc.setFontSize(12);
-            doc.text("No IPs found.", 14, currentY);
-            currentY += 10;
-          } else {
-            const ipTableData = ipReps.map(r => [
-              r.ip,
-              r.abuseConfidenceScore + "%",
-              r.totalReports.toString(),
-              r.isp || "N/A"
-            ]);
-            autoTable(doc, {
-              startY: currentY,
-              head: [['IP', 'Abuse Score', 'Total Reports', 'ISP']],
-              body: ipTableData,
-              theme: 'grid',
-              headStyles: { fillColor: [79, 70, 229] }
-            });
-            currentY = doc.lastAutoTable.finalY + 15;
-          }
+      if (cat.isIpRep) {
+        if (ipReps.length === 0) {
+          doc.setFontSize(12);
+          doc.text("No IPs found.", 14, currentY);
+          currentY += 10;
         } else {
-          if (cat.findings.length === 0) {
-            doc.setFontSize(12);
-            doc.text("No findings.", 14, currentY);
-            currentY += 10;
-          } else {
-            const vTableData = [];
-            cat.findings.forEach(f => {
-              f.hosts.forEach(host => {
-                vTableData.push([
-                  f.rule,
-                  host.subdomain || "—",
-                  host.ip || "—",
-                  host.port?.toString() || "—",
-                  f.severity.toUpperCase()
-                ]);
-              });
-            });
-            autoTable(doc, {
-              startY: currentY,
-              head: [['Finding Rule', 'Affected Host', 'IP', 'Port', 'Severity']],
-              body: vTableData,
-              theme: 'grid',
-              headStyles: { fillColor: [79, 70, 229] }
-            });
-            currentY = doc.lastAutoTable.finalY + 15;
-          }
+          autoTable(doc, {
+            startY: currentY,
+            head: [["IP", "Abuse Score", "Total Reports", "ISP"]],
+            body: ipReps.map((r) => [r.ip, r.abuseConfidenceScore + "%", r.totalReports.toString(), r.isp || "N/A"]),
+            theme: "grid",
+            headStyles: { fillColor: [79, 70, 229] },
+          });
+          currentY = doc.lastAutoTable.finalY + 15;
         }
-      });
+      } else {
+        if (cat.findings.length === 0) {
+          doc.setFontSize(12);
+          doc.text("No findings.", 14, currentY);
+          currentY += 10;
+        } else {
+          const rows = [];
+          cat.findings.forEach((f) => {
+            f.hosts.forEach((host) => {
+              rows.push([f.rule, host.subdomain || "—", host.ip || "—", host.port?.toString() || "—", f.severity.toUpperCase()]);
+            });
+          });
+          autoTable(doc, {
+            startY: currentY,
+            head: [["Finding Rule", "Affected Host", "IP", "Port", "Severity"]],
+            body: rows,
+            theme: "grid",
+            headStyles: { fillColor: [79, 70, 229] },
+          });
+          currentY = doc.lastAutoTable.finalY + 15;
+        }
+      }
+    });
 
-      doc.save(`${domain}-scan-report.pdf`);
-    };
+    doc.save(`${domain}-scan-report.pdf`);
+  };
 
-    const showFixToast = (payload) => setFixToast({ ...payload, id: Date.now() });
+  const showFixToast  = (payload) => setFixToast({ ...payload, id: Date.now() });
+  // ── Pass orgId + domain into modal so verify calls have the right context ──
+  const handleOpenGuide  = ({ rule, host }) =>
+    setGuideModal({ rule, host, orgId, domain: data?.host?.domain || domain });
+  const handleCloseGuide = () => setGuideModal(null);
 
-    return (
-      <div className="min-h-screen bg-surface relative">
-        {fixToast && (
+  return (
+    <div className="min-h-screen bg-surface relative">
+      {/* Fix toast */}
+      {fixToast && (
+        <div className="fixed top-4 right-4 z-[200] flex max-w-sm" role="status" aria-live="polite">
           <div
-            className="fixed top-4 right-4 z-[200] flex max-w-sm"
-            role="status"
-            aria-live="polite"
+            className={`relative flex w-full items-start gap-3 rounded-xl border px-4 py-3 pr-10 shadow-lg backdrop-blur-sm ${
+              fixToast.ok
+                ? "border-emerald-200 bg-emerald-50/95 text-emerald-950"
+                : "border-red-200 bg-red-50/95 text-red-950"
+            }`}
           >
-            <div
-              className={`relative flex w-full items-start gap-3 rounded-xl border px-4 py-3 pr-10 shadow-lg backdrop-blur-sm ${
-                fixToast.ok
-                  ? "border-emerald-200 bg-emerald-50/95 text-emerald-950"
-                  : "border-red-200 bg-red-50/95 text-red-950"
-              }`}
+            <span className={`material-symbols-outlined mt-0.5 shrink-0 text-xl ${fixToast.ok ? "text-emerald-600" : "text-red-600"}`}>
+              {fixToast.ok ? "check_circle" : "error"}
+            </span>
+            <p className="text-sm font-semibold leading-snug">{fixToast.text}</p>
+            <button
+              type="button"
+              onClick={() => setFixToast(null)}
+              className="absolute top-2 right-2 rounded-lg p-1 text-slate-500 hover:bg-black/5 hover:text-slate-800"
+              aria-label="Dismiss"
             >
-              <span
-                className={`material-symbols-outlined mt-0.5 shrink-0 text-xl ${
-                  fixToast.ok ? "text-emerald-600" : "text-red-600"
-                }`}
-              >
-                {fixToast.ok ? "check_circle" : "error"}
-              </span>
-              <p className="text-sm font-semibold leading-snug">{fixToast.text}</p>
-              <button
-                type="button"
-                onClick={() => setFixToast(null)}
-                className="absolute top-2 right-2 rounded-lg p-1 text-slate-500 hover:bg-black/5 hover:text-slate-800"
-                aria-label="Dismiss"
-              >
-                <span className="material-symbols-outlined text-lg leading-none">close</span>
-              </button>
-            </div>
+              <span className="material-symbols-outlined text-lg leading-none">close</span>
+            </button>
           </div>
+<<<<<<< HEAD
         )}
 =======
       <div className="min-h-screen bg-surface">
@@ -2129,4 +2102,218 @@ function ScanDetails() {
   );
 }
 
+=======
+        </div>
+      )}
+
+      {/* Fix Guide Modal — now receives orgId + domain */}
+      {guideModal && (
+        <FixGuideModal
+          rule={guideModal.rule}
+          host={guideModal.host}
+          orgId={guideModal.orgId}
+          domain={guideModal.domain}
+          onClose={handleCloseGuide}
+          onScoreUpdate={handleScoreUpdate}
+        />
+      )}
+
+      <main className="flex-1 overflow-y-auto pt-6 sm:pt-8 pb-16 px-4 sm:px-6 lg:px-12 max-w-[1600px] mx-auto w-full">
+        {/* Domain nav */}
+        {knownDomains.length > 0 && (
+          <section className="mb-8">
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <h3 className="text-sm uppercase tracking-widest text-on-surface-variant font-bold">
+                Domains
+              </h3>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+              {knownDomains.map((knownDomain) => (
+                <DomainTab
+                  key={knownDomain}
+                  domain={knownDomain}
+                  isActive={knownDomain.toLowerCase() === domain.toLowerCase()}
+                  onClick={() => handleDomainSelect(knownDomain)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Top section */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start mb-10 relative">
+          <div className="absolute top-3 right-3 z-10 lg:fixed lg:top-6 lg:right-6 lg:z-[110]">
+            <button
+              onClick={handleDownloadReport}
+              title="Download Report"
+              className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2 bg-indigo-600 text-white rounded-lg font-bold text-xs sm:text-sm shadow-lg hover:bg-indigo-700 transition whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-sm">download</span>
+              Download Report
+            </button>
+          </div>
+
+          {/* Score card */}
+          <div className="lg:col-span-4 bg-surface-container-lowest p-5 sm:p-6 lg:p-8 rounded-xl shadow-sm relative overflow-hidden group border border-slate-200">
+            <div className="security-pulse absolute -right-10 -top-10 w-40 h-40 rounded-full group-hover:scale-110 transition-transform duration-700" />
+            <div className="flex justify-between items-start mb-4">
+              <span className="label-md uppercase tracking-widest text-on-surface-variant text-[11px] font-bold">
+                Security Grade
+              </span>
+              <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: `"FILL" 1` }}>
+                verified_user
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <h1 className={`text-5xl sm:text-6xl lg:text-7xl font-extrabold font-headline tracking-tighter ${grade.color}`}>
+                {score}
+              </h1>
+              <span className="text-2xl text-on-surface-variant font-medium">/100</span>
+            </div>
+            <div className="mt-6 flex items-center justify-between">
+              <div className="flex-grow h-1.5 bg-surface-container rounded-full overflow-hidden mr-4">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-700"
+                  style={{ width: `${score}%` }}
+                />
+              </div>
+              <span className={`font-bold font-headline uppercase tracking-widest text-sm ${grade.color}`}>
+                {grade.label}
+              </span>
+            </div>
+          </div>
+
+          {/* Domain info */}
+          <div className="lg:col-span-8 p-0 sm:p-2 lg:p-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-container/50 text-on-primary-container rounded-full text-[11px] font-bold uppercase tracking-widest mb-4">
+              <span className="w-1.5 h-1.5 bg-primary rounded-full" /> Active Scan Result
+            </div>
+            <div className="mb-8">
+              <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold font-headline tracking-tighter text-on-surface inline-block relative break-words">
+                <span className="relative z-10">{data.host?.domain || domain}</span>
+                <span className="absolute -bottom-2 left-0 w-full h-4 bg-primary/10 -z-10 rounded-full" />
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+              <div className="flex flex-col">
+                <span className="text-[11px] uppercase tracking-widest text-on-surface-variant font-bold">IP Address</span>
+                <span className="text-lg font-semibold text-on-surface font-mono">{primaryIp}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[11px] uppercase tracking-widest text-on-surface-variant font-bold">Total Findings</span>
+                <span className="text-lg font-semibold text-on-surface">{totalFindings}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[11px] uppercase tracking-widest text-on-surface-variant font-bold">IPs Scanned</span>
+                <span className="text-lg font-semibold text-on-surface">{(data.ips || []).length}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Category nav */}
+        <section className="mb-8">
+          <h3 className="text-sm uppercase tracking-widest text-on-surface-variant font-bold mb-6">
+            Security Vectors
+          </h3>
+          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+            {allCategories.map((cat) => (
+              <CategoryTab
+                key={cat.name}
+                cat={cat}
+                isActive={resolvedActive === cat.name}
+                onClick={() => setActiveCatName(cat.name)}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* Findings panel */}
+        {activeCat && (
+          <section className="bg-surface-container-lowest rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-4 sm:px-6 lg:px-8 py-5 sm:py-6 border-b border-slate-200">
+              <div className="flex items-center gap-4">
+                <div className={`w-10 h-10 ${activeCfg.headerBg} text-white rounded-xl flex items-center justify-center shrink-0 shadow-sm`}>
+                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: `"FILL" 1` }}>
+                    {getCategoryIcon(activeCat.name)}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-extrabold font-headline tracking-tight text-on-surface">
+                    {activeCat.name}
+                  </h3>
+                  {activeCat.isIpRep ? (
+                    <p className="text-on-surface-variant text-sm">
+                      {ipRepsLoading
+                        ? "Checking reputation…"
+                        : `${ipReps.length} IP${ipReps.length !== 1 ? "s" : ""} checked via AbuseIPDB`}
+                    </p>
+                  ) : (
+                    <p className="text-on-surface-variant text-sm">
+                      {activeCat.findings.length} rule{activeCat.findings.length !== 1 ? "s" : ""} ·{" "}
+                      {activeCat.findings.reduce((s, f) => s + f.hosts.length, 0)} affected host
+                      {activeCat.findings.reduce((s, f) => s + f.hosts.length, 0) !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6 lg:p-8 space-y-4">
+              {activeCat.isIpRep && (
+                <>
+                  {ipRepsLoading ? (
+                    <div className="flex items-center justify-center gap-3 py-12 text-slate-500">
+                      <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                      <span className="text-sm font-semibold">
+                        Querying AbuseIPDB for {(data.ips || []).length} IP{(data.ips || []).length !== 1 ? "s" : ""}…
+                      </span>
+                    </div>
+                  ) : ipReps.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500">
+                      <span className="material-symbols-outlined text-4xl mb-2 block">public_off</span>
+                      <p className="font-semibold">No IPs found to check.</p>
+                    </div>
+                  ) : (
+                    ipReps.map((rep) => <IpReputationCard key={rep.ip} rep={rep} />)
+                  )}
+                </>
+              )}
+              {activeCat.isResolved && (
+                <ResolvedPanel
+                  domain={data?.host?.domain || domain}
+                  refresh={resolvedRefresh}
+                />
+              )}
+              {!activeCat.isIpRep && !activeCat.isResolved && (
+                <>
+                  {activeCat.findings.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500">
+                      <span className="material-symbols-outlined text-4xl mb-2 block">check_circle</span>
+                      <p className="font-semibold">No findings in this category.</p>
+                    </div>
+                  ) : (
+                    activeCat.findings.map((finding, idx) => (
+                      <FindingCard
+                        key={`${finding.rule}-${idx}`}
+                        finding={finding}
+                        token={authToken}
+                        orgId={orgId}
+                        categoryName={activeCat.name}
+                        onFixToast={showFixToast}
+                        onOpenGuide={handleOpenGuide}
+                      />
+                    ))
+                  )}
+                </>
+              )}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+}
+
+>>>>>>> tejas
 export default ScanDetails;
