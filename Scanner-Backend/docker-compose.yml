@@ -30,11 +30,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-<<<<<<< Updated upstream
       - DATABASE_URL=${DATABASE_URL}
-=======
-      - DATABASE_URL=postgresql://postgres:Tejas%402584@scanner-postgres:5432/scanner-db
->>>>>>> Stashed changes
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - QUTTERA_API_KEY=${QUTTERA_API_KEY}

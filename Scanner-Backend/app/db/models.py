@@ -123,7 +123,6 @@ class UserAssessment(Base):
     physical_security = Column(JSONB, nullable=True)
 
 
-
 class ScanSummary(Base):
     __tablename__ = "scan_summary"
 
@@ -155,7 +154,6 @@ class ScanScoreHistory(Base):
 
 
 class MalwareScanResult(Base):
-
     __tablename__ = "malware_scan_results"
 
     scan_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -182,62 +180,19 @@ class PortFixRequest(Base):
     __tablename__ = "port_fix_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-
     scan_id = Column(String(255), nullable=False)
-
-    org_id = Column(
-        String(36),
-        ForeignKey("organizations.org_id"),
-        nullable=False
-    )
-
-    user_id = Column(
-        String(36),
-        ForeignKey("users.user_id"),
-        nullable=True
-    )
-
-    domain = Column(
-        Text,
-        ForeignKey("scan_summary.domain"),
-        nullable=False
-    )
-
+    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    domain = Column(Text, ForeignKey("scan_summary.domain"), nullable=False)
     host = Column(String(255), nullable=False)
-
     port_number = Column(Integer, nullable=False)
-
     service = Column(String(255), nullable=True)
-
-    fix_type = Column(
-        String(50),
-        nullable=False,
-        default="port"
-    )
-
-    status = Column(
-        String(50),
-        nullable=False,
-        default="pending"
-    )
-
+    fix_type = Column(String(50), nullable=False, default="port")
+    status = Column(String(50), nullable=False, default="pending")
     is_open = Column(Boolean, nullable=True)
-
-    created_at = Column(
-        TIMESTAMP,
-        server_default=func.now()
-    )
-
-    verification_scan_time = Column(
-        TIMESTAMP,
-        nullable=True
-    )
-
-    updated_at = Column(
-        TIMESTAMP,
-        server_default=func.now(),
-        onupdate=func.now()
-    )
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    verification_scan_time = Column(TIMESTAMP, nullable=True)
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_portfix_scan", "scan_id"),
@@ -245,64 +200,29 @@ class PortFixRequest(Base):
         Index("idx_portfix_domain", "domain"),
         Index("idx_portfix_status", "status"),
     )
+
+
 class FixStatus(str, enum.Enum):
     pending = "pending"
     running = "running"
     completed = "completed"
-<<<<<<< Updated upstream
     failed = "failed"
-<<<<<<< HEAD
-=======
-    failed = "failed"   
-
-=======
->>>>>>> tejas
 
 
- 
-    
 class HeaderFixRequest(Base):
     __tablename__ = "header_fix_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-
     scan_id = Column(String(255), nullable=False, unique=True)
-
-    org_id = Column(
-        String(36),
-        ForeignKey("organizations.org_id"),
-        nullable=False,
-    )
-
-    user_id = Column(
-        String(36),
-        ForeignKey("users.user_id"),
-        nullable=True,
-    )
-
-    domain = Column(
-        Text,
-        ForeignKey("scan_summary.domain"),
-        nullable=False,
-    )
-
-    # e.g. "missing_csp", "missing_hsts", "missing_x_frame", "missing_x_content"
+    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    domain = Column(Text, ForeignKey("scan_summary.domain"), nullable=False)
     fix_type = Column(String(50), nullable=False)
-
     status = Column(String(50), nullable=False, default="pending")
-
-    # True = header now present (fix confirmed), False = still missing
     header_present = Column(Boolean, nullable=True)
-
     created_at = Column(TIMESTAMP, server_default=func.now())
-
     verification_scan_time = Column(TIMESTAMP, nullable=True)
-
-    updated_at = Column(
-        TIMESTAMP,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_headerfix_scan", "scan_id"),
@@ -316,44 +236,16 @@ class TlsFixRequest(Base):
     __tablename__ = "tls_fix_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-
     scan_id = Column(String(255), nullable=False, unique=True)
-
-    org_id = Column(
-        String(36),
-        ForeignKey("organizations.org_id"),
-        nullable=False,
-    )
-
-    user_id = Column(
-        String(36),
-        ForeignKey("users.user_id"),
-        nullable=True,
-    )
-
-    domain = Column(
-        Text,
-        ForeignKey("scan_summary.domain"),
-        nullable=False,
-    )
-
-    # e.g. "expired_tls", "weak_tls", "tls_missing_443"
+    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    domain = Column(Text, ForeignKey("scan_summary.domain"), nullable=False)
     fix_type = Column(String(50), nullable=False)
-
     status = Column(String(50), nullable=False, default="pending")
-
-    # True = TLS issue resolved, False = still present
     tls_ok = Column(Boolean, nullable=True)
-
     created_at = Column(TIMESTAMP, server_default=func.now())
-
     verification_scan_time = Column(TIMESTAMP, nullable=True)
-
-    updated_at = Column(
-        TIMESTAMP,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_tlsfix_scan", "scan_id"),
@@ -361,6 +253,7 @@ class TlsFixRequest(Base):
         Index("idx_tlsfix_domain", "domain"),
         Index("idx_tlsfix_status", "status"),
     )
+
 
 class ResolvedFinding(Base):
     __tablename__ = "resolved_findings"
@@ -377,9 +270,4 @@ class ResolvedFinding(Base):
     __table_args__ = (
         Index("idx_resolved_org", "org_id"),
         Index("idx_resolved_domain", "domain"),
-<<<<<<< HEAD
     )
->>>>>>> Stashed changes
-=======
-    )
->>>>>>> tejas
