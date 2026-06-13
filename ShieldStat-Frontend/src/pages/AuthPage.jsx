@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
-import { loginUser, registerUser, forgotPassword, resetPasswordWithOtp } from "../services/api";
+import { loginUser, resendLoginOtp, verifyLoginOtp, registerUser, forgotPassword, resetPasswordWithOtp } from "../services/api";
 // @ts-ignore
 import isecurify_logo from "../assets/isecurify_logo.png";
 
@@ -24,6 +24,7 @@ function AuthPage() {
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState("");
    const [success, setSuccess] = useState("");
+   const [requiresOtp, setRequiresOtp] = useState(false);
 
    // Separate visibility toggles
    const [loginShowPassword, setLoginShowPassword] = useState(false);
@@ -70,6 +71,12 @@ function AuthPage() {
          }
 
          const data = await loginUser(email, password, captchaToken);
+         if (data.requires_otp) {
+            setRequiresOtp(true);
+            setSuccess(data.message || "A login OTP was sent to your email.");
+            return;
+         }
+
          localStorage.setItem("token", data.token);
          localStorage.setItem("user", JSON.stringify(data.user));
 
@@ -78,6 +85,78 @@ function AuthPage() {
          } else {
             navigate("/scan-dashboard");
          }
+      } catch (err) {
+         setError(err.message);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   const handleVerifyLoginOtp = async (e) => {
+      e.preventDefault();
+      setError("");
+      setSuccess("");
+
+      if (!otp) {
+         setError("Please enter the OTP sent to your email");
+         return;
+      }
+
+      setLoading(true);
+      try {
+         const captchaEnabled = import.meta.env.VITE_RECAPTCHA_ENABLED === 'true';
+         let captchaToken = undefined;
+
+         if (captchaEnabled) {
+            if (!executeRecaptcha) {
+               setError("reCAPTCHA not initialized. Please try again later.");
+               setLoading(false);
+               return;
+            }
+            captchaToken = await executeRecaptcha("login");
+         }
+
+         const data = await verifyLoginOtp(email, password, otp, captchaToken);
+         localStorage.setItem("token", data.token);
+         localStorage.setItem("user", JSON.stringify(data.user));
+
+         if (data.user?.role === "admin") {
+            navigate("/admin");
+         } else {
+            navigate("/scan-dashboard");
+         }
+      } catch (err) {
+         setError(err.message);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   const handleResendOtp = async () => {
+      if (!email || !password) {
+         setError("Please enter your email and password first");
+         return;
+      }
+
+      setLoading(true);
+      setError("");
+      setSuccess("");
+      try {
+         const captchaEnabled = import.meta.env.VITE_RECAPTCHA_ENABLED === 'true';
+         let captchaToken = undefined;
+
+         if (captchaEnabled) {
+            if (!executeRecaptcha) {
+               setError("reCAPTCHA not initialized. Please try again later.");
+               setLoading(false);
+               return;
+            }
+            captchaToken = await executeRecaptcha("login");
+         }
+
+         const data = await resendLoginOtp(email, password, captchaToken);
+         setSuccess(data.message || "A new OTP has been sent to your email.");
+         setRequiresOtp(true);
       } catch (err) {
          setError(err.message);
       } finally {
@@ -259,7 +338,7 @@ function AuthPage() {
 
                   {/* ================= LOGIN ================= */}
                   {view === "login" && (
-                     <form className="mx-auto max-w-lg space-y-5 max-[480px]:space-y-3" onSubmit={handleLogin}>
+                     <form className="mx-auto max-w-lg space-y-5 max-[480px]:space-y-3" onSubmit={requiresOtp ? handleVerifyLoginOtp : handleLogin}>
                         <input
                            id="login-email"
                            type="email"
@@ -298,6 +377,42 @@ function AuthPage() {
                            </button>
                         </div>
 
+                        {requiresOtp && (
+                           <div className="space-y-2">
+                              <input
+                                 id="login-otp"
+                                 type="text"
+                                 inputMode="numeric"
+                                 autoComplete="one-time-code"
+                                 placeholder="Enter 6-digit OTP"
+                                 value={otp}
+                                 onChange={(e) => setOtp(e.target.value)}
+                                 className="w-full p-2.5 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
+                              />
+                              <div className="flex items-center justify-between text-xs text-on-surface-variant">
+                                 <button
+                                    type="button"
+                                    onClick={handleResendOtp}
+                                    disabled={loading}
+                                    className="font-semibold text-primary hover:underline disabled:opacity-60"
+                                 >
+                                    Resend OTP
+                                 </button>
+                                 <button
+                                    type="button"
+                                    onClick={() => {
+                                       setRequiresOtp(false);
+                                       setOtp("");
+                                       setSuccess("");
+                                    }}
+                                    className="font-semibold text-primary hover:underline"
+                                 >
+                                    Use another email
+                                 </button>
+                              </div>
+                           </div>
+                        )}
+
                         <button
                            id="login-submit"
                            type="submit"
@@ -305,7 +420,7 @@ function AuthPage() {
                            className="w-full py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary-dim transition disabled:opacity-60 flex items-center justify-center gap-2"
                         >
                            {loading && <Loader2 size={18} className="animate-spin" />}
-                           {loading ? "Signing In…" : "Sign In"}
+                           {loading ? (requiresOtp ? "Verifying OTP…" : "Signing In…") : (requiresOtp ? "Verify OTP" : "Sign In")}
                         </button>
                         <p style={{ fontSize: "11px", color: "#888" }}>
                            This site is protected by reCAPTCHA and the Google{" "}

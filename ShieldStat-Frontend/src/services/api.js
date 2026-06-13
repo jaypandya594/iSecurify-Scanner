@@ -45,6 +45,29 @@ export function loginUser(email, password, captcha_token) {
    });
 }
 
+export function resendLoginOtp(email, password, captcha_token) {
+   return request("/auth/login/resend-otp", {
+      method: "POST",
+      body: {
+         email,
+         password,
+         ...(captcha_token ? { captcha_token } : {})
+      },
+   });
+}
+
+export function verifyLoginOtp(email, password, otp, captcha_token) {
+   return request("/auth/login/verify-otp", {
+      method: "POST",
+      body: {
+         email,
+         password,
+         otp,
+         ...(captcha_token ? { captcha_token } : {})
+      },
+   });
+}
+
 export function registerUser(email, password, domain, captcha_token) {
    return request("/auth/register", {
       method: "POST",
