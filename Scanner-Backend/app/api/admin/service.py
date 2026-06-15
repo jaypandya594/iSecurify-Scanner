@@ -1,3 +1,4 @@
+import os
 import random
 import secrets
 import string
@@ -7,8 +8,19 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.auth.service import hashPassword
-from app.db.models import Blacklist, Organization, PromoCode, ScanScoreHistory, ScanSummary, User
-from app.utils.email import send_new_admin_credentials_email
+from app.db.models import (
+    AuditLog,
+    Blacklist,
+    Organization,
+    PersonalEmailInvitation,
+    PromoCode,
+    ScanScoreHistory,
+    ScanSummary,
+    SecurityAlert,
+    SubscriptionPlan,
+    User,
+)
+from app.utils.email import send_new_admin_credentials_email, send_personal_email_invitation_email
 
 
 def _generate_promo_string(length: int = 10) -> str:
@@ -96,6 +108,42 @@ def get_promo_codes(db: Session) -> list[dict]:
         }
         for code in codes
     ]
+
+
+def delete_promo_code(code_str: str, db: Session, current_admin: User | None = None, ip_address: str | None = None, public_ip: str | None = None) -> dict:
+    """Delete a promo code by its code string (both used and unused codes can be deleted)."""
+    promo = db.query(PromoCode).filter(PromoCode.code == code_str).first()
+
+    if not promo:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+
+    if promo.is_used and promo.used_by:
+        user = db.query(User).filter(User.user_id == promo.used_by).first()
+        if user and user.org_id:
+            org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+            if org:
+                current_domains = len(org.domain or [])
+                org.max_domains = max(1, org.max_domains - 1, current_domains)
+
+    db.delete(promo)
+    db.commit()
+
+    if current_admin:
+        _record_audit_log(
+            db,
+            admin=current_admin,
+            action="PROMO_CODE_DELETED",
+            target_type="promo_code",
+            target_id=promo.code,
+            details={"code": promo.code},
+            ip_address=ip_address,
+            public_ip=public_ip,
+        )
+
+    return {
+        "message": "Promo code deleted successfully",
+        "code": promo.code,
+    }
 
 
 def get_users_by_org(db: Session) -> dict:
