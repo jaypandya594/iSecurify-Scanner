@@ -68,16 +68,17 @@ export function verifyLoginOtp(email, password, otp, captcha_token) {
    });
 }
 
-export function registerUser(email, password, domain, captcha_token) {
-   return request("/auth/register", {
-      method: "POST",
-      body: {
-         email,
-         password,
-         domain,
-         ...(captcha_token ? { captcha_token } : {})
-      },
-   });
+export function registerUser(email, password, domain, captcha_token, invite_token) {
+  return request("/auth/register", {
+    method: "POST",
+    body: {
+      email,
+      password,
+      domain,
+      ...(invite_token ? { invite_token } : {}),
+      ...(captcha_token ? { captcha_token } : {}),
+    },
+  });
 }
 
 export function verifyEmail(token) {
@@ -120,9 +121,35 @@ export function getMembers(token) {
 }
 
 export function inviteMember(email, token) {
-   return request("/auth/invite", {
+  return request("/auth/invite", {
+    method: "POST",
+    body: { email },
+    token,
+  });
+}
+
+export function deleteMember(userId, token) {
+   return request(`/auth/members/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      token,
+   });
+}
+
+export function approvePersonalEmail(email, notes, token) {
+   return request("/admin/personal-email/approve", {
       method: "POST",
-      body: { email },
+      body: { email, notes },
+      token,
+   });
+}
+
+export function listPersonalEmailInvites(token) {
+   return request("/admin/personal-email", { token });
+}
+
+export function revokePersonalEmail(email, token) {
+   return request(`/admin/personal-email/${encodeURIComponent(email)}`, {
+      method: "DELETE",
       token,
    });
 }
@@ -184,12 +211,12 @@ export function getWebSocketUrl(orgId) {
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
 export async function generatePromoCode(token) {
-   const publicIp = await getPublicIp();
-   return request("/admin/generate-promo", {
-      method: "POST",
-      token,
-      publicIp,
-   });
+  const publicIp = await getPublicIp();
+  return request("/admin/generate-promo", {
+    method: "POST",
+    token,
+    publicIp,
+  });
 }
 
 export function getPromoCodes(token) {

@@ -5,6 +5,7 @@ class RegisterRequest(BaseModel):
     password: str
     domain: str
     name: str | None = None
+    invite_token: str | None = None
     captcha_token: str | None = None
 
 class LoginRequest(BaseModel):
@@ -13,7 +14,7 @@ class LoginRequest(BaseModel):
     captcha_token: str | None = None
 
 
-class VerifyLoginOtpRequest(BaseModel):
+class LoginOtpVerifyRequest(BaseModel):
     email: EmailStr
     password: str
     otp: str

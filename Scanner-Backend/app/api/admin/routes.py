@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest
+from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest, PersonalEmailApprovalRequest
 from app.api.admin.service import (
     block_email,
+    create_personal_email_invitation,
     create_subscription_plan,
     delete_promo_code,
     delete_subscription_plan,
@@ -11,12 +12,14 @@ from app.api.admin.service import (
     get_audit_logs,
     get_blacklisted_emails,
     get_promo_codes,
+    list_personal_email_invitations,
     get_scan_summaries,
     get_security_alerts,
     get_subscription_plans,
     get_total_scans,
     get_users_by_org,
     provision_admin_account,
+    revoke_personal_email_invitation,
     unblock_email,
     update_subscription_plan,
 )
@@ -77,6 +80,28 @@ def delete_promo(
 ):
     """Delete a promo code (both used and unused codes can be deleted)"""
     return delete_promo_code(code, db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
+
+
+@router.post("/personal-email/approve")
+def approve_personal_email(
+    req: PersonalEmailApprovalRequest,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    return create_personal_email_invitation(req.email, current_admin, db, notes=req.notes)
+
+
+@router.get("/personal-email")
+def list_personal_email(
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    return list_personal_email_invitations(db)
+
+
+@router.delete("/personal-email/{email}")
+def revoke_personal_email(email: str, db: Session = Depends(get_db), _current_admin: User = Depends(require_admin)):
+    return revoke_personal_email_invitation(email, db)
 
 
 @router.get("/users")

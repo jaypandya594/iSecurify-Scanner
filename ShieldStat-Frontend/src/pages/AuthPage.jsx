@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
@@ -14,12 +14,17 @@ function AuthPage() {
    const [view, setView] = useState("login");
 
    // ─── Shared state ──────────────────────────────────────────────────────────
-   const [email, setEmail] = useState("");
+   const [email, setEmail] = useState(() => {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("email") || "";
+   });
    const [password, setPassword] = useState("");
    const [confirmPassword, setConfirmPassword] = useState("");
    const [domain, setDomain] = useState("");
    const [otp, setOtp] = useState("");
    const [newPassword, setNewPassword] = useState("");
+   const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite_token") || "");
+   const hasInviteToken = Boolean(inviteToken);
 
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState("");
@@ -256,7 +261,23 @@ function AuthPage() {
       setLoading(true);
       try {
          const data = await resetPasswordWithOtp(email, otp, newPassword);
-         setSuccess(data.message || "Password reset successful!");
+
+         if (data.token && data.user) {
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("user", JSON.stringify(data.user));
+
+            if (data.user?.role === "admin") {
+               navigate("/admin");
+            } else {
+               navigate("/scan-dashboard");
+            }
+            return;
+         }
+
+         if (data.message) {
+            setSuccess(data.message);
+         }
+
          setTimeout(() => {
             switchView("login");
          }, 1500);
@@ -270,12 +291,23 @@ function AuthPage() {
    // ─── Titles & subtitles per view ──────────────────────────────────────────
    const titles = {
       login: { heading: "Welcome Back", sub: "Authenticate to access your dashboard" },
-      signup: { heading: "Create Account", sub: "Join the ecosystem of digital trust" },
+      signup: {
+         heading: hasInviteToken ? "Finish Your Invitation" : "Create Account",
+         sub: hasInviteToken
+            ? "Create your password and domain to activate your approved personal-email access."
+            : "Join the ecosystem of digital trust",
+      },
       forgot: { heading: "Forgot Password", sub: "Enter your email to receive a reset OTP" },
       "reset-otp": { heading: "Reset Password", sub: "Enter the OTP sent to your email" },
    };
 
    const { heading, sub } = titles[view];
+
+   useEffect(() => {
+      if (hasInviteToken && view === "login") {
+         setView("signup");
+      }
+   }, [hasInviteToken, view]);
 
    return (
       <div className="min-h-screen flex flex-col bg-background-light font-body">
@@ -322,6 +354,11 @@ function AuthPage() {
                   <div className="text-center mx-auto max-w-xl">
                      <h2 className="text-2xl max-[480px]:text-xl font-bold mb-2 text-on-surface">{heading}</h2>
                      <p className="text-on-surface-variant mb-4 text-sm max-[480px]:text-xs">{sub}</p>
+                     {hasInviteToken && (
+                        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                           Approved invitation detected. Complete signup here, then sign in normally with your new password.
+                        </div>
+                     )}
                   </div>
 
                   {/* ─── Error / Success banners ─── */}

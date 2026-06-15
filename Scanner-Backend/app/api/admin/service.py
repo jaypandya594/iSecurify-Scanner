@@ -1,3 +1,4 @@
+import os
 import random
 import secrets
 import string
@@ -13,6 +14,7 @@ from app.db.models import (
     AuditLog,
     Blacklist,
     Organization,
+    PersonalEmailInvitation,
     PromoCode,
     ScanScoreHistory,
     ScanSummary,
@@ -20,7 +22,7 @@ from app.db.models import (
     SubscriptionPlan,
     User,
 )
-from app.utils.email import send_new_admin_credentials_email
+from app.utils.email import send_new_admin_credentials_email, send_personal_email_invitation_email
 
 
 def _generate_promo_string(length: int = 10) -> str:

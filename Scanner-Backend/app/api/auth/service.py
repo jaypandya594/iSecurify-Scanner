@@ -17,6 +17,7 @@ from app.db.models import (
     PasswordResetOTP,
     Blacklist,
     SecurityAlert,
+    PersonalEmailInvitation,
 )
 from app.utils.email import (
     send_invite_email,
@@ -41,6 +42,7 @@ LOGIN_OTP_RESEND_LIMIT = 5
 LOGIN_OTP_COOLDOWN_SECONDS = 600
 VERIFICATION_EXPIRY_HOURS = 48
 FAILED_LOGIN_ATTEMPTS = 5
+ADMIN_LOGIN_OTP_BYPASS = os.getenv("ADMIN_LOGIN_OTP_BYPASS", "false").strip().lower() in {"1", "true", "yes", "on"}
 FAILED_LOGIN_WINDOW_MINUTES = 10
 LOCKOUT_DURATION_MINUTES = 30
 PUBLIC_EMAIL_DOMAINS = {
@@ -144,7 +146,21 @@ def _finalize_owner_registration(user: User, domain: str, db: Session) -> None:
     user.pending_registration_domain = None
 
 
-def register(email: str, password: str, domain: str, db: Session):
+def _personal_email_invitation_is_valid(email_lower: str, invite_token: str | None, db: Session) -> bool:
+    if not invite_token:
+        return False
+
+    invitation = (
+        db.query(PersonalEmailInvitation)
+        .filter(PersonalEmailInvitation.email == email_lower)
+        .filter(PersonalEmailInvitation.token == invite_token)
+        .filter(PersonalEmailInvitation.status == "approved")
+        .first()
+    )
+    return invitation is not None
+
+
+def register(email: str, password: str, domain: str, db: Session, invite_token: str | None = None):
     """
     ✅ FIXED: Save user to database FIRST, then send email
     If email fails, user is still saved (can resend later)
@@ -158,13 +174,15 @@ def register(email: str, password: str, domain: str, db: Session):
     if not domain:
         raise HTTPException(status_code=400, detail="Domain is required")
 
-    if _is_public_email_domain(email_lower):
+    is_invited_personal_signup = _personal_email_invitation_is_valid(email_lower, invite_token, db)
+
+    if _is_public_email_domain(email_lower) and not is_invited_personal_signup:
         raise HTTPException(
             status_code=400,
-            detail="Please use your organization email address for signup. Personal email providers are not allowed.",
+            detail="Please use your organization email address for signup. Personal email providers are not allowed without an approved invitation token.",
         )
 
-    if not _email_domain_matches_org(email_lower, domain):
+    if not is_invited_personal_signup and not _email_domain_matches_org(email_lower, domain):
         raise HTTPException(
             status_code=400,
             detail=f"Email domain must match your organization domain '{domain}'.",
@@ -408,18 +426,50 @@ def login_user(email: str, password: str, db: Session):
     user.locked_until = None
     db.commit()
 
-    _issue_login_otp(email_lower, user, track_resend=False)
+    if user.role == "admin" and ADMIN_LOGIN_OTP_BYPASS:
+        access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
+        return {
+            "token": access_token,
+            "requires_otp": False,
+            "message": "Admin login bypassed OTP because ADMIN_LOGIN_OTP_BYPASS is enabled.",
+            "user": {
+                "role": user.role,
+                "user_id": user.user_id,
+                "org_id": user.org_id,
+                "email": user.email,
+            },
+        }
+
+    otp = _generate_login_otp(user.user_id, db)
+    try:
+        send_login_otp_email(to_email=user.email, otp=otp)
+    except Exception as email_err:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to send login OTP: {str(email_err)}")
 
     return {
         "requires_otp": True,
-        "message": "A 6-digit login OTP has been sent to your email. Enter it to continue.",
-        "email": user.email,
+        "message": "A login OTP has been sent to your email.",
     }
 
+def _generate_login_otp(user_id: str, db: Session) -> str:
+    otp = f"{secrets.randbelow(1000000):06d}"
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
 
-def resend_login_otp(email: str, password: str, db: Session):
+    existing = db.query(PasswordResetOTP).filter(PasswordResetOTP.user_id == user_id).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+
+    db.add(PasswordResetOTP(user_id=user_id, otp_hash=hashPassword(otp), expires_at=expires_at))
+    db.commit()
+    return otp
+
+
+def send_login_otp(email: str, password: str, db: Session):
     email_lower = email.lower().strip()
     user = db.query(User).filter(User.email == email_lower).first()
+
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
@@ -429,47 +479,46 @@ def resend_login_otp(email: str, password: str, db: Session):
     if not user.email_verified:
         raise HTTPException(status_code=401, detail="Please verify your email before logging in.")
 
-    _issue_login_otp(email_lower, user, track_resend=True)
-    return {"message": "A new login OTP has been sent to your email.", "email": user.email}
+    otp = _generate_login_otp(user.user_id, db)
+    try:
+        send_login_otp_email(to_email=user.email, otp=otp)
+    except Exception as email_err:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to send login OTP: {str(email_err)}")
+
+    return {"message": "Login OTP sent successfully", "requires_otp": True}
 
 
 def verify_login_otp(email: str, password: str, otp: str, db: Session):
     email_lower = email.lower().strip()
     user = db.query(User).filter(User.email == email_lower).first()
+
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not verifyPassword(password, user.password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    stored = redis_client.get(_login_otp_key(email_lower))
-    if not stored:
-        raise HTTPException(status_code=400, detail="OTP expired or not found. Please request a new one.")
+    otp_record = db.query(PasswordResetOTP).filter(PasswordResetOTP.user_id == user.user_id).first()
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="OTP expired or not found")
 
-    try:
-        payload = json.loads(stored)
-    except Exception:
-        redis_client.delete(_login_otp_key(email_lower))
-        raise HTTPException(status_code=400, detail="Invalid OTP session. Please request a new one.")
+    now_utc = datetime.now(timezone.utc)
+    expires_at = otp_record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now_utc:
+        db.delete(otp_record)
+        db.commit()
+        raise HTTPException(status_code=400, detail="OTP expired or not found")
 
-    expires_at = payload.get("expires_at")
-    if expires_at and datetime.fromisoformat(expires_at).astimezone(timezone.utc) < datetime.now(timezone.utc):
-        redis_client.delete(_login_otp_key(email_lower))
-        raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
-
-    if not verifyPassword(otp.strip(), payload.get("otp_hash", "")):
+    if not verifyPassword(otp.strip(), otp_record.otp_hash):
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    redis_client.delete(_login_otp_key(email_lower))
+    db.delete(otp_record)
+    db.commit()
 
     access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
-    org = (
-        db.query(Organization).filter(Organization.org_id == user.org_id).first()
-        if user.org_id
-        else None
-    )
-    org_domains = list(org.domain) if org and org.domain else []
-    primary_domain = org_domains[0] if org_domains else ""
     return {
         "token": access_token,
         "user": {
@@ -479,6 +528,7 @@ def verify_login_otp(email: str, password: str, otp: str, db: Session):
             "email": user.email,
         },
     }
+
 
 def send_forgot_password_otp(email: str, db: Session):
     email_lower = email.lower()
@@ -613,6 +663,30 @@ def invite_member(owner: User, invite_email: str, db: Session):
         "message": "Invitation sent successfully",
         "sent": email_lower
     }
+
+def delete_member(owner: User, member_id: str, db: Session):
+    if not member_id or not str(member_id).strip():
+        raise HTTPException(status_code=400, detail="Member ID is required")
+
+    member = db.query(User).filter(User.user_id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    if member.org_id != owner.org_id:
+        raise HTTPException(status_code=403, detail="You can only delete members from your organization")
+
+    if member.user_id == owner.user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account from this organization")
+
+    db.delete(member)
+    db.commit()
+
+    return {
+        "message": "Member deleted successfully",
+        "deleted_user_id": member.user_id,
+        "email": member.email,
+    }
+
 
 def get_members(owner: User, db: Session):
     members = db.query(User).filter(

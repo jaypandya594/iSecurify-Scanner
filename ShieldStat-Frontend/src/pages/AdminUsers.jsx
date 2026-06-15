@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { getUsersByOrg, getBlacklistedEmails, blockUserByEmail, unblockUserByEmail, getScanSummaries, getTotalScans, createAdmin } from "../services/api";
 
 function AdminUsers() {
@@ -223,6 +224,12 @@ function AdminUsers() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
+            <Link
+              to="/admin/personal-invitations"
+              className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+            >
+              Personal Invitations
+            </Link>
             <button 
               onClick={() => setActiveTab("users")}
               className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${activeTab === "users" ? "bg-primary text-white shadow-lg" : "bg-surface-container text-on-surface hover:bg-surface-container-high"}`}
