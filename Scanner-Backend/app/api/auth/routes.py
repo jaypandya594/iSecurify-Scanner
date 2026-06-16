@@ -196,18 +196,8 @@ def redeem_promo(
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-# =============================================================================
-# NEW: TOTP routes
-# POST /auth/totp/setup   — generate QR code for first-time Google Authenticator setup
-# POST /auth/totp/verify  — check 6-digit code, receive JWT on success
-# =============================================================================
-
 @router.post('/totp/setup')
 def totp_setup_route(req: TotpSetupRequest, db: Session = Depends(get_db)):
-    """
-    Called when /auth/login returns { requires_totp_setup: true }.
-    Returns { otpauth_uri, secret } — frontend turns otpauth_uri into a QR code.
-    """
     try:
         return setup_user_totp(req.email, req.password, db)
     except HTTPException:
@@ -219,11 +209,6 @@ def totp_setup_route(req: TotpSetupRequest, db: Session = Depends(get_db)):
 
 @router.post('/totp/verify')
 def totp_verify_route(req: TotpVerifyRequest, db: Session = Depends(get_db)):
-    """
-    Called when /auth/login returns { requires_totp_verify: true },
-    or after scanning the QR code to confirm setup worked.
-    Returns { token, user } on success.
-    """
     try:
         return verify_user_totp(req.email, req.password, req.totp_code, db)
     except HTTPException:
@@ -235,10 +220,6 @@ def totp_verify_route(req: TotpVerifyRequest, db: Session = Depends(get_db)):
 
 @router.post('/totp/reset')
 def totp_reset_route(req: TotpResetRequest, db: Session = Depends(get_db)):
-    """
-    Reset a user's Google Authenticator binding after verifying via email OTP.
-    Use this when the user loses their authenticator app.
-    """
     try:
         return reset_user_totp(req.email, req.otp, db)
     except HTTPException:

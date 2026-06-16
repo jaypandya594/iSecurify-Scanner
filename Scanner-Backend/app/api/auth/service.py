@@ -308,18 +308,6 @@ def verify_registration(token: str, db: Session):
 
     return {"message": "Your email is verified. You can now log in."}
 
-# =============================================================================
-# LOGIN — modified to add TOTP gate after password check
-# =============================================================================
-# What changed vs your original login_user():
-#   1. After all your existing checks pass (blacklist, lock, password, email_verified)
-#      we reset failed attempts as before, but DON'T issue a token yet.
-#   2. Admin bypass: if role == "admin" and ADMIN_TOTP_REQUIRED is false → issue
-#      token immediately (same behaviour as before for admins).
-#   3. Regular users (and admins when ADMIN_TOTP_REQUIRED=true):
-#      - No totp_secret stored yet  → tell frontend to call /auth/totp/setup
-#      - totp_secret exists          → tell frontend to call /auth/totp/verify
-# =============================================================================
 
 def login_user(email: str, password: str, db: Session):
     email_lower = email.lower().strip()
@@ -389,14 +377,11 @@ def login_user(email: str, password: str, db: Session):
             detail="Please verify your email before logging in. Check your inbox for the verification link.",
         )
 
-    # ── reset failed-attempt counters (same as before) ────────────────────────
     user.failed_login_attempts = 0
     user.last_failed_login_at = None
     user.locked_until = None
     db.commit()
 
-    # ── NEW: TOTP gate ────────────────────────────────────────────────────────
-    # Admin bypass: if ADMIN_TOTP_REQUIRED is false, admins skip TOTP entirely.
     if user.role == "admin" and not ADMIN_TOTP_REQUIRED:
         access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
         return {
@@ -409,26 +394,17 @@ def login_user(email: str, password: str, db: Session):
             },
         }
 
-    # User has not completed setup yet: show QR/setup flow again.
     if not user.is_totp_enabled:
         return {
             "requires_totp_setup": True,
             "message": "Complete your Google Authenticator setup to sign in.",
         }
 
-    # Already configured: prompt for current 6-digit code.
     return {
         "requires_totp_verify": True,
         "message": "Enter your 6-digit Google Authenticator code",
     }
 
-
-# =============================================================================
-# NEW: /auth/totp/setup
-# =============================================================================
-# Called after login_user() returns requires_totp_setup: true.
-# Re-verifies credentials, generates a secret, saves it, returns QR data.
-# =============================================================================
 
 def setup_user_totp(email: str, password: str, db: Session) -> dict:
     email_lower = email.lower().strip()
@@ -443,24 +419,14 @@ def setup_user_totp(email: str, password: str, db: Session) -> dict:
         secret = generate_totp_secret()
         user.totp_secret = secret
 
-    # is_totp_enabled stays False until they verify a code successfully
     db.commit()
 
     uri = get_totp_uri(secret=secret, email=user.email)
     return {
-        "otpauth_uri": uri,   # frontend encodes this into a QR code image
-        "secret": secret,     # shown as plain text fallback ("can't scan? type this")
+        "otpauth_uri": uri,   
+        "secret": secret,     
     }
 
-
-# =============================================================================
-# NEW: /auth/totp/verify
-# =============================================================================
-# Called after:
-#   a) login_user() returns requires_totp_verify: true  (normal returning login)
-#   b) user has scanned the QR from setup and enters their first code
-# Checks the 6-digit code → issues JWT on success.
-# =============================================================================
 
 def verify_user_totp(email: str, password: str, totp_code: str, db: Session) -> dict:
     email_lower = email.lower().strip()
@@ -481,7 +447,6 @@ def verify_user_totp(email: str, password: str, totp_code: str, db: Session) -> 
             detail="Invalid or expired authenticator code. Please try again.",
         )
 
-    # First successful verify → mark TOTP as fully enabled
     if not user.is_totp_enabled:
         user.is_totp_enabled = True
         db.commit()
