@@ -16,20 +16,29 @@ class Organization(Base):
 
 class User(Base):
     __tablename__ = "users"
-
-    user_id = Column(String(36), primary_key=True)
-    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=True)
-    email = Column(String(255), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False, default="owner")
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    email_verified = Column(Boolean, nullable=False, server_default="true")
-    failed_login_attempts = Column(Integer, nullable=False, default=0)
-    last_failed_login_at = Column(TIMESTAMP, nullable=True)
-    locked_until = Column(TIMESTAMP, nullable=True)
-    verification_token = Column(String(255), unique=True, nullable=True)
-    verification_expires_at = Column(TIMESTAMP, nullable=True)
+ 
+    user_id                   = Column(String(36), primary_key=True)
+    org_id                    = Column(String(36), ForeignKey("organizations.org_id"), nullable=True)
+    email                     = Column(String(255), unique=True, nullable=False)
+    password                  = Column(String(255), nullable=False)
+    role                      = Column(String(20), nullable=False, default="owner")
+    created_at                = Column(TIMESTAMP, server_default=func.now())
+    email_verified            = Column(Boolean, nullable=False, server_default="true")
+    failed_login_attempts     = Column(Integer, nullable=False, default=0)
+    last_failed_login_at      = Column(TIMESTAMP, nullable=True)
+    locked_until              = Column(TIMESTAMP, nullable=True)
+    verification_token        = Column(String(255), unique=True, nullable=True)
+    verification_expires_at   = Column(TIMESTAMP, nullable=True)
     pending_registration_domain = Column(Text, nullable=True)
+ 
+    # ── NEW: TOTP columns ─────────────────────────────────────────────────────
+    totp_secret     = Column(String(64), nullable=True)
+    # NULL  → user has never set up Google Authenticator
+    # value → the Base32 secret tied to their Authenticator app entry
+ 
+    is_totp_enabled = Column(Boolean, nullable=False, server_default="false")
+    # False → setup not yet confirmed (secret might exist but not verified)
+    # True  → user successfully verified a code at least once; TOTP is active
 
 class Invitation(Base):
     __tablename__ = "invitations"

@@ -329,6 +329,109 @@ def get_blacklisted_emails(db: Session) -> list[dict]:
     ]
 
 
+def create_personal_email_invitation(email: str, current_admin: User, db: Session, notes: str | None = None) -> dict:
+    normalized_email = _normalize_email(email)
+
+    if db.query(Blacklist).filter(Blacklist.email == normalized_email).first():
+        raise HTTPException(status_code=400, detail="This email is blocked")
+
+    existing_invitation = (
+        db.query(PersonalEmailInvitation)
+        .filter(PersonalEmailInvitation.email == normalized_email)
+        .first()
+    )
+
+    token = secrets.token_urlsafe(32)
+    invite_link = f"{os.getenv('FRONTEND_URL', '').rstrip('/')}/auth?email={normalized_email}&invite_token={token}"
+
+    if existing_invitation:
+        existing_invitation.token = token
+        existing_invitation.status = "approved"
+        existing_invitation.approved_by = current_admin.user_id
+        existing_invitation.approved_at = datetime.now(timezone.utc)
+        existing_invitation.notes = notes or existing_invitation.notes
+        db.add(existing_invitation)
+        db.commit()
+        db.refresh(existing_invitation)
+        invitation = existing_invitation
+    else:
+        invitation = PersonalEmailInvitation(
+            invitation_id=str(uuid.uuid4()),
+            email=normalized_email,
+            token=token,
+            status="approved",
+            approved_by=current_admin.user_id,
+            approved_at=datetime.now(timezone.utc),
+            notes=notes,
+        )
+        db.add(invitation)
+        db.commit()
+        db.refresh(invitation)
+
+    try:
+        send_personal_email_invitation_email(
+            to_email=normalized_email,
+            invite_link=invite_link,
+            invited_by_email=current_admin.email,
+        )
+    except Exception as email_err:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send personal-email invitation email: {str(email_err)}",
+        )
+
+    _record_audit_log(
+        db,
+        admin=current_admin,
+        action="PERSONAL_EMAIL_INVITE_APPROVED",
+        target_type="personal_email_invitation",
+        target_id=normalized_email,
+        details={"email": normalized_email, "notes": notes},
+    )
+
+    return {
+        "message": "Personal email invitation approved successfully",
+        "email": normalized_email,
+        "token": invitation.token,
+        "status": invitation.status,
+        "invitation_id": invitation.invitation_id,
+    }
+
+
+def list_personal_email_invitations(db: Session) -> list[dict]:
+    invitations = db.query(PersonalEmailInvitation).order_by(PersonalEmailInvitation.created_at.desc()).all()
+    return [
+        {
+            "invitation_id": item.invitation_id,
+            "email": item.email,
+            "token": item.token,
+            "status": item.status,
+            "approved_by": item.approved_by,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "approved_at": item.approved_at.isoformat() if item.approved_at else None,
+            "notes": item.notes,
+        }
+        for item in invitations
+    ]
+
+
+def revoke_personal_email_invitation(email: str, db: Session) -> dict:
+    normalized_email = _normalize_email(email)
+    invitation = db.query(PersonalEmailInvitation).filter(PersonalEmailInvitation.email == normalized_email).first()
+
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Personal email invitation not found")
+
+    db.delete(invitation)
+    db.commit()
+
+    return {
+        "message": "Personal email invitation revoked successfully",
+        "email": normalized_email,
+    }
+
+
 def get_scan_summaries(db: Session) -> list[dict]:
     summaries = db.query(ScanSummary).all()
     org_ids = {summary.org_id for summary in summaries}

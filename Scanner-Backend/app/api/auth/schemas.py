@@ -13,13 +13,6 @@ class LoginRequest(BaseModel):
     password: str
     captcha_token: str | None = None
 
-
-class LoginOtpVerifyRequest(BaseModel):
-    email: EmailStr
-    password: str
-    otp: str
-    captcha_token: str | None = None
-
 class InviteRequest(BaseModel):
     email: EmailStr
 
@@ -49,6 +42,20 @@ class OrgMembersRequest(BaseModel):
 class AddDomainRequest(BaseModel):
     domain: str
 
-
 class VerifyEmailRequest(BaseModel):
     token: str
+
+# ── NEW: TOTP schemas ─────────────────────────────────────────────────────────
+
+class TotpSetupRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class TotpVerifyRequest(BaseModel):
+    email: EmailStr
+    password: str
+    totp_code: str
+
+class TotpResetRequest(BaseModel):
+    email: EmailStr
+    otp: str

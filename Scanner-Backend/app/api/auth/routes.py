@@ -1,17 +1,19 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.api.auth.schemas import (
-    RegisterRequest, LoginRequest, LoginOtpVerifyRequest, InviteRequest,
+    RegisterRequest, LoginRequest, InviteRequest,
     RedeemPromoRequest, ForgotPasswordOtpRequest,
     ForgotPasswordResetRequest, ResetPasswordRequest,
     AddDomainRequest, VerifyEmailRequest,
+    TotpSetupRequest, TotpVerifyRequest, TotpResetRequest,
 )
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.api.auth.service import (
-    login_user, send_login_otp, verify_login_otp, register, verify_registration, invite_member,
+    login_user, register, verify_registration, invite_member,
     get_members, delete_member, redeem_promo_code, add_domain,
     send_forgot_password_otp, verify_otp_and_reset_password,
     reset_password_with_old_password,
+    setup_user_totp, verify_user_totp, reset_user_totp,
 )
 from app.core.middleware import require_owner, protect
 from app.db.models import User, Organization
@@ -69,35 +71,6 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     except Exception:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-
-@router.post('/login/resend-otp')
-async def login_resend_otp(req: LoginRequest, db: Session = Depends(get_db)):
-    await verify_captcha(req.captcha_token)
-
-    if not req.email or not req.password:
-        raise HTTPException(status_code=400, detail="Please fill all the fields")
-
-    try:
-        return send_login_otp(req.email, req.password, db)
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-
-
-@router.post('/login/verify-otp')
-async def login_verify_otp(req: LoginOtpVerifyRequest, db: Session = Depends(get_db)):
-    await verify_captcha(req.captcha_token)
-
-    if not req.email or not req.password or not req.otp:
-        raise HTTPException(status_code=400, detail="Please fill all the fields")
-
-    try:
-        return verify_login_otp(req.email, req.password, req.otp, db)
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.post('/forgot-password')
 def forgot_password(req: ForgotPasswordOtpRequest, db: Session = Depends(get_db)):
@@ -219,5 +192,57 @@ def redeem_promo(
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+# =============================================================================
+# NEW: TOTP routes
+# POST /auth/totp/setup   — generate QR code for first-time Google Authenticator setup
+# POST /auth/totp/verify  — check 6-digit code, receive JWT on success
+# =============================================================================
+
+@router.post('/totp/setup')
+def totp_setup_route(req: TotpSetupRequest, db: Session = Depends(get_db)):
+    """
+    Called when /auth/login returns { requires_totp_setup: true }.
+    Returns { otpauth_uri, secret } — frontend turns otpauth_uri into a QR code.
+    """
+    try:
+        return setup_user_totp(req.email, req.password, db)
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.post('/totp/verify')
+def totp_verify_route(req: TotpVerifyRequest, db: Session = Depends(get_db)):
+    """
+    Called when /auth/login returns { requires_totp_verify: true },
+    or after scanning the QR code to confirm setup worked.
+    Returns { token, user } on success.
+    """
+    try:
+        return verify_user_totp(req.email, req.password, req.totp_code, db)
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.post('/totp/reset')
+def totp_reset_route(req: TotpResetRequest, db: Session = Depends(get_db)):
+    """
+    Reset a user's Google Authenticator binding after verifying via email OTP.
+    Use this when the user loses their authenticator app.
+    """
+    try:
+        return reset_user_totp(req.email, req.otp, db)
+    except HTTPException:
+        raise
+    except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Internal Server Error")

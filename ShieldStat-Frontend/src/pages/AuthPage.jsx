@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
-import { loginUser, resendLoginOtp, verifyLoginOtp, registerUser, forgotPassword, resetPasswordWithOtp } from "../services/api";
+import { loginUser, registerUser, forgotPassword, resetPasswordWithOtp, setupTotp, verifyTotp, resetTotp } from "../services/api";
+import QRCode from "react-qr-code";
 // @ts-ignore
 import isecurify_logo from "../assets/isecurify_logo.png";
 
@@ -22,15 +23,17 @@ function AuthPage() {
    const [confirmPassword, setConfirmPassword] = useState("");
    const [domain, setDomain] = useState("");
    const [otp, setOtp] = useState("");
+   const [totpCode, setTotpCode] = useState("");
+   const [totpSetupUri, setTotpSetupUri] = useState("");
+   const [totpSecret, setTotpSecret] = useState("");
    const [newPassword, setNewPassword] = useState("");
    const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite_token") || "");
    const hasInviteToken = Boolean(inviteToken);
+   const [resetRequested, setResetRequested] = useState(false);
 
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState("");
    const [success, setSuccess] = useState("");
-   const [requiresOtp, setRequiresOtp] = useState(false);
-
    // Separate visibility toggles
    const [loginShowPassword, setLoginShowPassword] = useState(false);
    const [signupShowPassword, setSignupShowPassword] = useState(false);
@@ -39,13 +42,21 @@ function AuthPage() {
 
    // ─── Reset form when switching views ───────────────────────────────────────
    const switchView = (newView) => {
+      const keepEmail = ["reset-otp", "totp-setup", "totp-verify", "totp-reset"].includes(newView);
+      const keepPassword = ["totp-setup", "totp-verify"].includes(newView);
       setView(newView);
-      setEmail(newView === "reset-otp" ? email : ""); // keep email when going to OTP step
-      setPassword("");
+      setEmail(keepEmail ? email : "");
+      setPassword(keepPassword ? password : "");
       setConfirmPassword("");
       setDomain("");
       setOtp("");
       setNewPassword("");
+      setTotpCode("");
+      setResetRequested(false);
+      if (!["totp-setup", "totp-verify"].includes(newView)) {
+         setTotpSetupUri("");
+         setTotpSecret("");
+      }
       setError("");
       setSuccess("");
    };
@@ -76,60 +87,33 @@ function AuthPage() {
          }
 
          const data = await loginUser(email, password, captchaToken);
-         if (data.requires_otp) {
-            setRequiresOtp(true);
-            setSuccess(data.message || "A login OTP was sent to your email.");
+
+         if (data?.requires_totp_setup) {
+            const setup = await setupTotp(email, password);
+            setTotpSetupUri(setup.otpauth_uri || "");
+            setTotpSecret(setup.secret || "");
+            setView("totp-setup");
             return;
          }
 
-         localStorage.setItem("token", data.token);
-         localStorage.setItem("user", JSON.stringify(data.user));
-
-         if (data.user?.role === "admin") {
-            navigate("/admin");
-         } else {
-            navigate("/scan-dashboard");
+         if (data?.requires_totp_verify) {
+            setView("totp-verify");
+            return;
          }
-      } catch (err) {
-         setError(err.message);
-      } finally {
-         setLoading(false);
-      }
-   };
 
-   const handleVerifyLoginOtp = async (e) => {
-      e.preventDefault();
-      setError("");
-      setSuccess("");
+         if (data?.token) {
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("user", JSON.stringify(data.user));
 
-      if (!otp) {
-         setError("Please enter the OTP sent to your email");
-         return;
-      }
-
-      setLoading(true);
-      try {
-         const captchaEnabled = import.meta.env.VITE_RECAPTCHA_ENABLED === 'true';
-         let captchaToken = undefined;
-
-         if (captchaEnabled) {
-            if (!executeRecaptcha) {
-               setError("reCAPTCHA not initialized. Please try again later.");
-               setLoading(false);
-               return;
+            if (data.user?.role === "admin") {
+               navigate("/admin");
+            } else {
+               navigate("/scan-dashboard");
             }
-            captchaToken = await executeRecaptcha("login");
+            return;
          }
 
-         const data = await verifyLoginOtp(email, password, otp, captchaToken);
-         localStorage.setItem("token", data.token);
-         localStorage.setItem("user", JSON.stringify(data.user));
-
-         if (data.user?.role === "admin") {
-            navigate("/admin");
-         } else {
-            navigate("/scan-dashboard");
-         }
+         setError(data?.message || "Unable to sign in. Please try again.");
       } catch (err) {
          setError(err.message);
       } finally {
@@ -137,37 +121,6 @@ function AuthPage() {
       }
    };
 
-   const handleResendOtp = async () => {
-      if (!email || !password) {
-         setError("Please enter your email and password first");
-         return;
-      }
-
-      setLoading(true);
-      setError("");
-      setSuccess("");
-      try {
-         const captchaEnabled = import.meta.env.VITE_RECAPTCHA_ENABLED === 'true';
-         let captchaToken = undefined;
-
-         if (captchaEnabled) {
-            if (!executeRecaptcha) {
-               setError("reCAPTCHA not initialized. Please try again later.");
-               setLoading(false);
-               return;
-            }
-            captchaToken = await executeRecaptcha("login");
-         }
-
-         const data = await resendLoginOtp(email, password, captchaToken);
-         setSuccess(data.message || "A new OTP has been sent to your email.");
-         setRequiresOtp(true);
-      } catch (err) {
-         setError(err.message);
-      } finally {
-         setLoading(false);
-      }
-   };
 
    // ─── Register handler ─────────────────────────────────────────────────────
    const handleRegister = async (e) => {
@@ -217,6 +170,120 @@ function AuthPage() {
    };
 
    // ─── Forgot Password – Step 1: Send OTP ──────────────────────────────────
+   const handleConfirmTotpSetup = async (e) => {
+      e.preventDefault();
+      setError("");
+      setSuccess("");
+
+      if (!totpCode) {
+         setError("Please enter the 6-digit code from your authenticator app.");
+         return;
+      }
+
+      setLoading(true);
+      try {
+         const data = await verifyTotp(email, password, totpCode);
+
+         if (data?.token) {
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("user", JSON.stringify(data.user));
+
+            if (data.user?.role === "admin") {
+               navigate("/admin");
+            } else {
+               navigate("/scan-dashboard");
+            }
+            return;
+         }
+
+         setError(data?.message || "TOTP verification failed. Please try again.");
+      } catch (err) {
+         setError(err.message);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   const handleVerifyTotp = async (e) => {
+      e.preventDefault();
+      setError("");
+      setSuccess("");
+
+      if (!totpCode) {
+         setError("Please enter the 6-digit code from your authenticator app.");
+         return;
+      }
+
+      setLoading(true);
+      try {
+         const data = await verifyTotp(email, password, totpCode);
+
+         if (data?.token) {
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("user", JSON.stringify(data.user));
+
+            if (data.user?.role === "admin") {
+               navigate("/admin");
+            } else {
+               navigate("/scan-dashboard");
+            }
+            return;
+         }
+
+         setError(data?.message || "TOTP verification failed. Please try again.");
+      } catch (err) {
+         setError(err.message);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   const handleSendTotpResetOtp = async (e) => {
+      e?.preventDefault();
+      setError("");
+      setSuccess("");
+
+      if (!email) {
+         setError("Please enter your email address to receive a reset OTP.");
+         return;
+      }
+
+      setLoading(true);
+      try {
+         const data = await forgotPassword(email);
+         setSuccess(data.message || "OTP sent to your email. Enter it below to reset authenticator.");
+         setResetRequested(true);
+      } catch (err) {
+         setError(err.message);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   const handleResetTotp = async (e) => {
+      e.preventDefault();
+      setError("");
+      setSuccess("");
+
+      if (!email || !otp) {
+         setError("Please enter your email and OTP to reset the authenticator.");
+         return;
+      }
+
+      setLoading(true);
+      try {
+         const data = await resetTotp(email, otp);
+         setSuccess(data.message || "Your authenticator is reset. Please login again.");
+         setTimeout(() => {
+            switchView("login");
+         }, 1500);
+      } catch (err) {
+         setError(err.message);
+      } finally {
+         setLoading(false);
+      }
+   };
+
    const handleForgotPassword = async (e) => {
       e.preventDefault();
       setError("");
@@ -299,6 +366,9 @@ function AuthPage() {
       },
       forgot: { heading: "Forgot Password", sub: "Enter your email to receive a reset OTP" },
       "reset-otp": { heading: "Reset Password", sub: "Enter the OTP sent to your email" },
+      "totp-setup": { heading: "Set Up Authenticator", sub: "Scan the QR code and enter a code from your app." },
+      "totp-verify": { heading: "Verify Authenticator", sub: "Enter the code from your authenticator app to sign in." },
+      "totp-reset": { heading: "Lost Authenticator App", sub: "Reset your authenticator with an email OTP." },
    };
 
    const { heading, sub } = titles[view];
@@ -375,7 +445,7 @@ function AuthPage() {
 
                   {/* ================= LOGIN ================= */}
                   {view === "login" && (
-                     <form className="mx-auto max-w-lg space-y-5 max-[480px]:space-y-3" onSubmit={requiresOtp ? handleVerifyLoginOtp : handleLogin}>
+                     <form className="mx-auto max-w-lg space-y-5 max-[480px]:space-y-3" onSubmit={handleLogin}>
                         <input
                            id="login-email"
                            type="email"
@@ -403,8 +473,7 @@ function AuthPage() {
                            </button>
                         </div>
 
-                        {/* Forgot password link */}
-                        <div className="text-right -mt-2">
+                        <div className="flex flex-col gap-2 text-right -mt-2">
                            <button
                               type="button"
                               onClick={() => switchView("forgot")}
@@ -412,43 +481,14 @@ function AuthPage() {
                            >
                               Forgot Password?
                            </button>
+                           <button
+                              type="button"
+                              onClick={() => switchView("totp-reset")}
+                              className="text-xs text-on-surface-variant hover:text-primary hover:underline"
+                           >
+                              Lost authenticator app? Reset via email OTP
+                           </button>
                         </div>
-
-                        {requiresOtp && (
-                           <div className="space-y-2">
-                              <input
-                                 id="login-otp"
-                                 type="text"
-                                 inputMode="numeric"
-                                 autoComplete="one-time-code"
-                                 placeholder="Enter 6-digit OTP"
-                                 value={otp}
-                                 onChange={(e) => setOtp(e.target.value)}
-                                 className="w-full p-2.5 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
-                              />
-                              <div className="flex items-center justify-between text-xs text-on-surface-variant">
-                                 <button
-                                    type="button"
-                                    onClick={handleResendOtp}
-                                    disabled={loading}
-                                    className="font-semibold text-primary hover:underline disabled:opacity-60"
-                                 >
-                                    Resend OTP
-                                 </button>
-                                 <button
-                                    type="button"
-                                    onClick={() => {
-                                       setRequiresOtp(false);
-                                       setOtp("");
-                                       setSuccess("");
-                                    }}
-                                    className="font-semibold text-primary hover:underline"
-                                 >
-                                    Use another email
-                                 </button>
-                              </div>
-                           </div>
-                        )}
 
                         <button
                            id="login-submit"
@@ -457,13 +497,110 @@ function AuthPage() {
                            className="w-full py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary-dim transition disabled:opacity-60 flex items-center justify-center gap-2"
                         >
                            {loading && <Loader2 size={18} className="animate-spin" />}
-                           {loading ? (requiresOtp ? "Verifying OTP…" : "Signing In…") : (requiresOtp ? "Verify OTP" : "Sign In")}
+                           {loading ? "Signing In…" : "Sign In"}
                         </button>
                         <p style={{ fontSize: "11px", color: "#888" }}>
                            This site is protected by reCAPTCHA and the Google{" "}
                            <a href="https://policies.google.com/privacy">Privacy Policy</a> and{" "}
                            <a href="https://policies.google.com/terms">Terms of Service</a> apply.
                         </p>
+                     </form>
+                  )}
+
+                  {/* ================= TOTP SETUP ================= */}
+                  {view === "totp-setup" && (
+                     <form className="mx-auto max-w-lg space-y-5 max-[480px]:space-y-3" onSubmit={handleConfirmTotpSetup}>
+                        <div className="flex justify-between items-center">
+                           <button
+                              type="button"
+                              onClick={() => switchView("login")}
+                              className="text-sm text-primary font-semibold hover:underline"
+                           >
+                              Back to Login
+                           </button>
+                        </div>
+
+                        <p className="text-sm text-on-surface-variant">
+                           Scan the QR code below with Google Authenticator or any TOTP app, then enter the 6-digit code to complete setup.
+                        </p>
+
+                        {totpSetupUri ? (
+                           <div className="flex justify-center py-4">
+                              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                 <QRCode value={totpSetupUri} size={180} />
+                              </div>
+                           </div>
+                        ) : (
+                           <div className="text-sm text-on-surface-variant">Preparing your authenticator setup...</div>
+                        )}
+
+                        {totpSecret && (
+                           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                              <div className="font-semibold text-on-surface mb-1">Manual key</div>
+                              <div className="font-mono break-all text-sm text-on-surface-variant">{totpSecret}</div>
+                           </div>
+                        )}
+
+                        <input
+                           id="totp-setup-code"
+                           type="text"
+                           inputMode="numeric"
+                           placeholder="Enter 6-digit code"
+                           maxLength={6}
+                           value={totpCode}
+                           onChange={(e) => setTotpCode(e.target.value.replace(/[^0-9]/g, ""))}
+                           className="w-full p-2.5 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40 tracking-widest text-center text-base"
+                        />
+
+                        <button
+                           id="totp-setup-submit"
+                           type="submit"
+                           disabled={loading}
+                           className="w-full py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary-dim transition disabled:opacity-60 flex items-center justify-center gap-2"
+                        >
+                           {loading && <Loader2 size={18} className="animate-spin" />}
+                           {loading ? "Verifying…" : "Verify & Complete Setup"}
+                        </button>
+                     </form>
+                  )}
+
+                  {/* ================= TOTP VERIFY ================= */}
+                  {view === "totp-verify" && (
+                     <form className="mx-auto max-w-lg space-y-5 max-[480px]:space-y-3" onSubmit={handleVerifyTotp}>
+                        <div className="flex justify-between items-center">
+                           <button
+                              type="button"
+                              onClick={() => switchView("login")}
+                              className="text-sm text-primary font-semibold hover:underline"
+                           >
+                              Back to Login
+                           </button>
+                        </div>
+
+                        <p className="text-sm text-on-surface-variant">
+                           Enter the 6-digit code from your authenticator app to complete sign in.
+                        </p>
+
+                        <input
+                           id="totp-verify-code"
+                           type="text"
+                           inputMode="numeric"
+                           placeholder="Enter 6-digit code"
+                           maxLength={6}
+                           value={totpCode}
+                           onChange={(e) => setTotpCode(e.target.value.replace(/[^0-9]/g, ""))}
+                           className="w-full p-2.5 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40 tracking-widest text-center text-base"
+                        />
+
+                        <button
+                           id="totp-verify-submit"
+                           type="submit"
+                           disabled={loading}
+                           className="w-full py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary-dim transition disabled:opacity-60 flex items-center justify-center gap-2"
+                        >
+                           {loading && <Loader2 size={18} className="animate-spin" />}
+                           {loading ? "Verifying…" : "Verify & Sign In"}
+                        </button>
                      </form>
                   )}
 
@@ -623,6 +760,58 @@ function AuthPage() {
                         >
                            {loading && <Loader2 size={18} className="animate-spin" />}
                            {loading ? "Resetting…" : "Reset Password"}
+                        </button>
+                     </form>
+                  )}
+
+                  {/* ================= TOTP RESET ================= */}
+                  {view === "totp-reset" && (
+                     <form className="mx-auto max-w-lg space-y-5 max-[480px]:space-y-3" onSubmit={resetRequested ? handleResetTotp : handleSendTotpResetOtp}>
+                        <div className="flex justify-between items-center">
+                           <button
+                              type="button"
+                              onClick={() => switchView("login")}
+                              className="text-sm text-primary font-semibold hover:underline"
+                           >
+                              Back to Login
+                           </button>
+                        </div>
+
+                        <p className="text-sm text-on-surface-variant">
+                           {resetRequested
+                              ? "Enter the OTP sent to your email to reset your authenticator app."
+                              : "Enter your email and request a reset OTP to recover your lost authenticator app."}
+                        </p>
+
+                        <input
+                           id="totp-reset-email"
+                           type="email"
+                           placeholder="email@example.com"
+                           value={email}
+                           onChange={(e) => setEmail(e.target.value)}
+                           className="w-full p-2.5 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
+                        />
+
+                        {resetRequested && (
+                           <input
+                              id="totp-reset-otp"
+                              type="text"
+                              placeholder="Enter OTP"
+                              maxLength={6}
+                              value={otp}
+                              onChange={(e) => setOtp(e.target.value)}
+                              className="w-full p-2.5 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40 tracking-widest text-center text-base"
+                           />
+                        )}
+
+                        <button
+                           id="totp-reset-submit"
+                           type="submit"
+                           disabled={loading}
+                           className="w-full py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary-dim transition disabled:opacity-60 flex items-center justify-center gap-2"
+                        >
+                           {loading && <Loader2 size={18} className="animate-spin" />}
+                           {loading ? "Processing…" : resetRequested ? "Submit OTP & Reset" : "Send Reset OTP"}
                         </button>
                      </form>
                   )}

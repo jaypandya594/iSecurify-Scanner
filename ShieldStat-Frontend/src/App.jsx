@@ -14,6 +14,7 @@ const ScanDashboard = lazy(() => import("./pages/ScanDashboard"));
 const ScanDetails = lazy(() => import("./pages/ScanDetails"));
 const ScanHistory = lazy(() => import("./pages/ScanHistory"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 const PersonalInvitations = lazy(() => import("./pages/PersonalInvitations"));
 const AdminSubscription = lazy(() => import("./pages/AdminSubscription"));
 const Assessment = lazy(() => import("./pages/Assessment"));

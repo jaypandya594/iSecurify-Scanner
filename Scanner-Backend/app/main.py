@@ -48,6 +48,16 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+
+@app.get("/healthz")
+def healthz_check():
+    return {"status": "ok"}
+
+
 app.include_router(auth_router)
 app.include_router(scanner_router)
 app.include_router(assessment_router)

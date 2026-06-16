@@ -45,26 +45,24 @@ export function loginUser(email, password, captcha_token) {
    });
 }
 
-export function resendLoginOtp(email, password, captcha_token) {
-   return request("/auth/login/resend-otp", {
+export function setupTotp(email, password) {
+   return request("/auth/totp/setup", {
       method: "POST",
-      body: {
-         email,
-         password,
-         ...(captcha_token ? { captcha_token } : {})
-      },
+      body: { email, password },
    });
 }
 
-export function verifyLoginOtp(email, password, otp, captcha_token) {
-   return request("/auth/login/verify-otp", {
+export function verifyTotp(email, password, totp_code) {
+   return request("/auth/totp/verify", {
       method: "POST",
-      body: {
-         email,
-         password,
-         otp,
-         ...(captcha_token ? { captcha_token } : {})
-      },
+      body: { email, password, totp_code },
+   });
+}
+
+export function resetTotp(email, otp) {
+   return request("/auth/totp/reset", {
+      method: "POST",
+      body: { email, otp },
    });
 }
 

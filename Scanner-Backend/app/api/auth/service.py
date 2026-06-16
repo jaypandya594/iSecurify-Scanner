@@ -21,11 +21,12 @@ from app.db.models import (
 )
 from app.utils.email import (
     send_invite_email,
-    send_login_otp_email,
     send_password_reset_otp_email,
     send_registration_verification_email,
 )
 import logging
+
+from app.utils.totp import generate_totp_secret, get_totp_uri, verify_totp_code
 
 logger = logging.getLogger(__name__)
 redis_client = Redis(
@@ -43,6 +44,7 @@ LOGIN_OTP_COOLDOWN_SECONDS = 600
 VERIFICATION_EXPIRY_HOURS = 48
 FAILED_LOGIN_ATTEMPTS = 5
 ADMIN_LOGIN_OTP_BYPASS = os.getenv("ADMIN_LOGIN_OTP_BYPASS", "false").strip().lower() in {"1", "true", "yes", "on"}
+DOMAIN_EMAIL_VALIDATION_ENABLED = os.getenv("DOMAIN_EMAIL_VALIDATION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 FAILED_LOGIN_WINDOW_MINUTES = 10
 LOCKOUT_DURATION_MINUTES = 30
 PUBLIC_EMAIL_DOMAINS = {
@@ -50,6 +52,12 @@ PUBLIC_EMAIL_DOMAINS = {
     "mail.com", "aol.com", "icloud.com", "protonmail.com", "zoho.com",
     "gmx.com", "yandex.com", "inbox.com", "me.com", "msn.com",
 }
+
+# Reads ADMIN_TOTP_REQUIRED from .env once at startup.
+# ADMIN_TOTP_REQUIRED=false  → admins skip TOTP and get a JWT straight away
+# ADMIN_TOTP_REQUIRED=true   → admins must use TOTP like everyone else (default)
+ADMIN_TOTP_REQUIRED: bool = os.getenv("ADMIN_TOTP_REQUIRED", "true").strip().lower() in {"1", "true", "yes", "on"}
+
 
 def hashPassword(password: str) -> str:
     salt = bcrypt.gensalt(10)
@@ -161,10 +169,6 @@ def _personal_email_invitation_is_valid(email_lower: str, invite_token: str | No
 
 
 def register(email: str, password: str, domain: str, db: Session, invite_token: str | None = None):
-    """
-    ✅ FIXED: Save user to database FIRST, then send email
-    If email fails, user is still saved (can resend later)
-    """
     email_lower = email.lower().strip()
     existing_user = db.query(User).filter(User.email == email_lower).first()
     if existing_user and existing_user.email_verified:
@@ -176,31 +180,31 @@ def register(email: str, password: str, domain: str, db: Session, invite_token: 
 
     is_invited_personal_signup = _personal_email_invitation_is_valid(email_lower, invite_token, db)
 
-    if _is_public_email_domain(email_lower) and not is_invited_personal_signup:
-        raise HTTPException(
-            status_code=400,
-            detail="Please use your organization email address for signup. Personal email providers are not allowed without an approved invitation token.",
-        )
+    if DOMAIN_EMAIL_VALIDATION_ENABLED:
+        if _is_public_email_domain(email_lower) and not is_invited_personal_signup:
+            raise HTTPException(
+                status_code=400,
+                detail="Please use your organization email address for signup. Personal email providers are not allowed without an approved invitation token.",
+            )
 
-    if not is_invited_personal_signup and not _email_domain_matches_org(email_lower, domain):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Email domain must match your organization domain '{domain}'.",
-        )
+        if not is_invited_personal_signup and not _email_domain_matches_org(email_lower, domain):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Email domain must match your organization domain '{domain}'.",
+            )
 
-    if _email_domain_has_owner(email_lower, db):
-        email_domain = email_lower.split("@")[-1]
-        raise HTTPException(
-            status_code=400,
-            detail=f"An account for '@{email_domain}' already exists. Cannot create a new account, you need to be invited by the owner.",
-        )
+        if _email_domain_has_owner(email_lower, db):
+            email_domain = email_lower.split("@")[-1]
+            raise HTTPException(
+                status_code=400,
+                detail=f"An account for '@{email_domain}' already exists. Cannot create a new account, you need to be invited by the owner.",
+            )
 
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=VERIFICATION_EXPIRY_HOURS)
     hashed_password = hashPassword(password)
 
     try:
-        # ✅ STEP 1: Create user in database FIRST
         if existing_user:
             existing_user.password = hashed_password
             existing_user.pending_registration_domain = domain
@@ -220,27 +224,18 @@ def register(email: str, password: str, domain: str, db: Session, invite_token: 
             )
             db.add(new_user)
         
-        # ✅ Commit user to database (SUCCESS!)
         db.commit()
         logger.info(f"User registered: {email_lower}")
         
     except Exception as db_err:
         db.rollback()
         logger.error(f"Database error during registration: {str(db_err)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to create account"
-        )
+        raise HTTPException(status_code=500, detail="Failed to create account")
 
-    # ✅ STEP 2: Send verification email AFTER user is saved
-    # If this fails, user is already in database ✅
     frontend = os.getenv("FRONTEND_URL")
     if not frontend:
         logger.error("FRONTEND_URL not set")
-        raise HTTPException(
-            status_code=500,
-            detail="Server misconfiguration: FRONTEND_URL is not set",
-        )
+        raise HTTPException(status_code=500, detail="Server misconfiguration: FRONTEND_URL is not set")
 
     verify_url = f"{frontend.rstrip('/')}/auth/verify-email?token={token}"
 
@@ -248,9 +243,7 @@ def register(email: str, password: str, domain: str, db: Session, invite_token: 
         send_registration_verification_email(to_email=email_lower, verify_url=verify_url)
         logger.info(f"Verification email sent to: {email_lower}")
     except Exception as email_err:
-        # ✅ Log the error but DON'T rollback - user is already saved!
         logger.warning(f"Failed to send verification email to {email_lower}: {str(email_err)}")
-        # Return success anyway - user can request resend later
         return {
             "message": "Account created! Check your email for verification link. (If you don't see it, check spam folder)",
             "email": email_lower,
@@ -289,10 +282,7 @@ def verify_registration(token: str, db: Session):
 
     if expires_at < now_utc:
         db.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail="Verification link has expired. Please register again.",
-        )
+        raise HTTPException(status_code=400, detail="Verification link has expired. Please register again.")
 
     email_lower = user.email.lower().strip()
 
@@ -318,45 +308,23 @@ def verify_registration(token: str, db: Session):
 
     return {"message": "Your email is verified. You can now log in."}
 
-def _issue_login_otp(email_lower: str, user: User, *, track_resend: bool = False) -> None:
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    cooldown_key = _login_cooldown_key(email_lower)
-    if redis_client.exists(cooldown_key):
-        raise HTTPException(status_code=429, detail="Too many OTP requests. Please wait 10 minutes before trying again.")
-
-    otp = f"{secrets.randbelow(1000000):06d}"
-    otp_hash = hashPassword(otp)
-    redis_client.setex(
-        _login_otp_key(email_lower),
-        LOGIN_OTP_EXPIRY_SECONDS,
-        json.dumps({
-            "user_id": user.user_id,
-            "otp_hash": otp_hash,
-            "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=LOGIN_OTP_EXPIRY_SECONDS)).isoformat(),
-        }),
-    )
-    if track_resend:
-        resend_key = _login_resend_key(email_lower)
-        redis_client.zremrangebyscore(resend_key, 0, now_ts - LOGIN_OTP_RESEND_WINDOW_SECONDS)
-        resend_count = int(redis_client.zcard(resend_key) or 0)
-        if resend_count >= LOGIN_OTP_RESEND_LIMIT:
-            redis_client.setex(cooldown_key, LOGIN_OTP_COOLDOWN_SECONDS, "1")
-            raise HTTPException(status_code=429, detail="OTP resend limit reached. Please wait 10 minutes before requesting another code.")
-
-        redis_client.zadd(resend_key, {str(now_ts): now_ts})
-        redis_client.expire(resend_key, LOGIN_OTP_RESEND_WINDOW_SECONDS)
-
-    try:
-        send_login_otp_email(to_email=user.email, otp=otp)
-    except Exception as email_err:
-        redis_client.delete(_login_otp_key(email_lower))
-        if track_resend:
-            redis_client.zrem(_login_resend_key(email_lower), str(now_ts))
-        raise HTTPException(status_code=500, detail=f"Failed to send login OTP: {str(email_err)}")
-
+# =============================================================================
+# LOGIN — modified to add TOTP gate after password check
+# =============================================================================
+# What changed vs your original login_user():
+#   1. After all your existing checks pass (blacklist, lock, password, email_verified)
+#      we reset failed attempts as before, but DON'T issue a token yet.
+#   2. Admin bypass: if role == "admin" and ADMIN_TOTP_REQUIRED is false → issue
+#      token immediately (same behaviour as before for admins).
+#   3. Regular users (and admins when ADMIN_TOTP_REQUIRED=true):
+#      - No totp_secret stored yet  → tell frontend to call /auth/totp/setup
+#      - totp_secret exists          → tell frontend to call /auth/totp/verify
+# =============================================================================
 
 def login_user(email: str, password: str, db: Session):
     email_lower = email.lower().strip()
+
+    # ── your existing checks — NOT changed ───────────────────────────────────
     blocked_user = db.query(Blacklist).filter(Blacklist.email == email_lower).first()
     if blocked_user:
         raise HTTPException(status_code=403, detail="This user has been blocked by an admin")
@@ -421,17 +389,18 @@ def login_user(email: str, password: str, db: Session):
             detail="Please verify your email before logging in. Check your inbox for the verification link.",
         )
 
+    # ── reset failed-attempt counters (same as before) ────────────────────────
     user.failed_login_attempts = 0
     user.last_failed_login_at = None
     user.locked_until = None
     db.commit()
 
-    if user.role == "admin" and ADMIN_LOGIN_OTP_BYPASS:
+    # ── NEW: TOTP gate ────────────────────────────────────────────────────────
+    # Admin bypass: if ADMIN_TOTP_REQUIRED is false, admins skip TOTP entirely.
+    if user.role == "admin" and not ADMIN_TOTP_REQUIRED:
         access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
         return {
             "token": access_token,
-            "requires_otp": False,
-            "message": "Admin login bypassed OTP because ADMIN_LOGIN_OTP_BYPASS is enabled.",
             "user": {
                 "role": user.role,
                 "user_id": user.user_id,
@@ -440,83 +409,82 @@ def login_user(email: str, password: str, db: Session):
             },
         }
 
-    otp = _generate_login_otp(user.user_id, db)
-    try:
-        send_login_otp_email(to_email=user.email, otp=otp)
-    except Exception as email_err:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to send login OTP: {str(email_err)}")
+    # User has not completed setup yet: show QR/setup flow again.
+    if not user.is_totp_enabled:
+        return {
+            "requires_totp_setup": True,
+            "message": "Complete your Google Authenticator setup to sign in.",
+        }
 
+    # Already configured: prompt for current 6-digit code.
     return {
-        "requires_otp": True,
-        "message": "A login OTP has been sent to your email.",
+        "requires_totp_verify": True,
+        "message": "Enter your 6-digit Google Authenticator code",
     }
 
-def _generate_login_otp(user_id: str, db: Session) -> str:
-    otp = f"{secrets.randbelow(1000000):06d}"
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
 
-    existing = db.query(PasswordResetOTP).filter(PasswordResetOTP.user_id == user_id).first()
-    if existing:
-        db.delete(existing)
-        db.flush()
+# =============================================================================
+# NEW: /auth/totp/setup
+# =============================================================================
+# Called after login_user() returns requires_totp_setup: true.
+# Re-verifies credentials, generates a secret, saves it, returns QR data.
+# =============================================================================
 
-    db.add(PasswordResetOTP(user_id=user_id, otp_hash=hashPassword(otp), expires_at=expires_at))
+def setup_user_totp(email: str, password: str, db: Session) -> dict:
+    email_lower = email.lower().strip()
+    user = db.query(User).filter(User.email == email_lower).first()
+
+    if not user or not verifyPassword(password, user.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if user.totp_secret and not user.is_totp_enabled:
+        secret = user.totp_secret
+    else:
+        secret = generate_totp_secret()
+        user.totp_secret = secret
+
+    # is_totp_enabled stays False until they verify a code successfully
     db.commit()
-    return otp
+
+    uri = get_totp_uri(secret=secret, email=user.email)
+    return {
+        "otpauth_uri": uri,   # frontend encodes this into a QR code image
+        "secret": secret,     # shown as plain text fallback ("can't scan? type this")
+    }
 
 
-def send_login_otp(email: str, password: str, db: Session):
+# =============================================================================
+# NEW: /auth/totp/verify
+# =============================================================================
+# Called after:
+#   a) login_user() returns requires_totp_verify: true  (normal returning login)
+#   b) user has scanned the QR from setup and enters their first code
+# Checks the 6-digit code → issues JWT on success.
+# =============================================================================
+
+def verify_user_totp(email: str, password: str, totp_code: str, db: Session) -> dict:
     email_lower = email.lower().strip()
     user = db.query(User).filter(User.email == email_lower).first()
 
-    if not user:
+    if not user or not verifyPassword(password, user.password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not verifyPassword(password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.totp_secret:
+        raise HTTPException(
+            status_code=400,
+            detail="TOTP not set up. Please call /auth/totp/setup first.",
+        )
 
-    if not user.email_verified:
-        raise HTTPException(status_code=401, detail="Please verify your email before logging in.")
+    if not verify_totp_code(secret=user.totp_secret, code=totp_code):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authenticator code. Please try again.",
+        )
 
-    otp = _generate_login_otp(user.user_id, db)
-    try:
-        send_login_otp_email(to_email=user.email, otp=otp)
-    except Exception as email_err:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to send login OTP: {str(email_err)}")
-
-    return {"message": "Login OTP sent successfully", "requires_otp": True}
-
-
-def verify_login_otp(email: str, password: str, otp: str, db: Session):
-    email_lower = email.lower().strip()
-    user = db.query(User).filter(User.email == email_lower).first()
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    if not verifyPassword(password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    otp_record = db.query(PasswordResetOTP).filter(PasswordResetOTP.user_id == user.user_id).first()
-    if not otp_record:
-        raise HTTPException(status_code=400, detail="OTP expired or not found")
-
-    now_utc = datetime.now(timezone.utc)
-    expires_at = otp_record.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < now_utc:
-        db.delete(otp_record)
+    # First successful verify → mark TOTP as fully enabled
+    if not user.is_totp_enabled:
+        user.is_totp_enabled = True
         db.commit()
-        raise HTTPException(status_code=400, detail="OTP expired or not found")
-
-    if not verifyPassword(otp.strip(), otp_record.otp_hash):
-        raise HTTPException(status_code=400, detail="Invalid OTP")
-
-    db.delete(otp_record)
-    db.commit()
 
     access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
     return {
@@ -527,6 +495,43 @@ def verify_login_otp(email: str, password: str, otp: str, db: Session):
             "org_id": user.org_id,
             "email": user.email,
         },
+    }
+
+
+def reset_user_totp(email: str, otp: str, db: Session) -> dict:
+    email_lower = email.lower().strip()
+    user = db.query(User).filter(User.email == email_lower).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    otp_record = db.query(PasswordResetOTP).filter(
+        PasswordResetOTP.user_id == user.user_id
+    ).first()
+
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    expires_at = otp_record.expires_at
+    now_utc = datetime.now(timezone.utc)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if not expires_at or expires_at < now_utc:
+        db.delete(otp_record)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    if not verifyPassword(otp.strip(), otp_record.otp_hash):
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    user.totp_secret = None
+    user.is_totp_enabled = False
+    db.delete(otp_record)
+    db.commit()
+
+    return {
+        "message": "Your authenticator app has been reset. Please log in and set up Google Authenticator again.",
     }
 
 
