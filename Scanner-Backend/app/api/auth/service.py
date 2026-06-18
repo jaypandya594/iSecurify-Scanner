@@ -180,19 +180,24 @@ def register(email: str, password: str, domain: str, db: Session, invite_token: 
 
     is_invited_personal_signup = _personal_email_invitation_is_valid(email_lower, invite_token, db)
 
-    if DOMAIN_EMAIL_VALIDATION_ENABLED:
-        if _is_public_email_domain(email_lower) and not is_invited_personal_signup:
+    # Domain validation only applies to regular signups, NOT invited users
+    # Invited users join existing organizations and can use any email address
+    if DOMAIN_EMAIL_VALIDATION_ENABLED and not is_invited_personal_signup:
+        # Public email domains are rejected for regular signups (without invitation)
+        if _is_public_email_domain(email_lower):
             raise HTTPException(
                 status_code=400,
                 detail="Please use your organization email address for signup. Personal email providers are not allowed without an approved invitation token.",
             )
 
-        if not is_invited_personal_signup and not _email_domain_matches_org(email_lower, domain):
+        # Email domain must match the organization domain they're signing up under
+        if not _email_domain_matches_org(email_lower, domain):
             raise HTTPException(
                 status_code=400,
                 detail=f"Email domain must match your organization domain '{domain}'.",
             )
 
+        # Reject if another owner already owns this domain
         if _email_domain_has_owner(email_lower, db):
             email_domain = email_lower.split("@")[-1]
             raise HTTPException(

@@ -155,7 +155,7 @@ function AuthPage() {
             captchaToken = await executeRecaptcha("register");
          }
 
-         const data = await registerUser(email, password, domain.trim(), captchaToken);
+         const data = await registerUser(email, password, domain.trim(), captchaToken, inviteToken);
          setSuccess(
             data.message ||
             "Check your email for a verification link to complete registration."
