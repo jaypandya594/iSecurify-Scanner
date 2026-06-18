@@ -247,6 +247,15 @@ export async function deletePromoCode(code, token) {
   });
 }
 
+export async function disablePromoCode(code, token) {
+  const publicIp = await getPublicIp();
+  return request(`/admin/promo-codes/${code}/disable`, {
+    method: "PUT",
+    token,
+    publicIp,
+  });
+}
+
 export function getUsersByOrg(token) {
   return request("/admin/users", { token });
 }
@@ -262,12 +271,12 @@ export async function createAdmin(email, token) {
 }
 
 export async function deleteAdmin(email, token) {
-   const publicIp = await getPublicIp();
-   return request(`/admin/admin/${encodeURIComponent(email)}`, {
-      method: "DELETE",
-      token,
-      publicIp,
-   });
+  const publicIp = await getPublicIp();
+  return request(`/admin/admin/${encodeURIComponent(email)}`, {
+    method: "DELETE",
+    token,
+    publicIp,
+  });
 }
 
 export async function blockUserByEmail(email, token) {

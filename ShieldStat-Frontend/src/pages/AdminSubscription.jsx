@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { deletePromoCode, generatePromoCode, getPromoCodes, getSubscriptionPlans, createSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan } from "../services/api";
+import { deletePromoCode, disablePromoCode, generatePromoCode, getPromoCodes, getSubscriptionPlans, createSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan } from "../services/api";
 
 function AdminSubscription() {
   const [promoCodes, setPromoCodes] = useState([]);
@@ -15,10 +15,39 @@ function AdminSubscription() {
   const [deletingPlanLoading, setDeletingPlanLoading] = useState(false);
   const [deletingPromoCode, setDeletingPromoCode] = useState(null);
   const [deletingPromoLoading, setDeletingPromoLoading] = useState(false);
+  const [disablingPromoCode, setDisablingPromoCode] = useState(null);
+  const [disablingPromoLoading, setDisablingPromoLoading] = useState(false);
 
   const showNotification = (text, type = "success") => {
     setNotification({ text, type });
     setTimeout(() => setNotification({ text: "", type: "" }), 3000);
+  };
+
+  const formatLocalDateTime = (dateString) => {
+    if (!dateString) return "—";
+    try {
+      // Parse the ISO string and ensure it's treated as UTC
+      const date = new Date(dateString);
+
+      // Check if date is valid
+      if (isNaN(date.getTime())) return "—";
+
+      // Format with local timezone using Intl API for better control
+      const options = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+        timeZoneName: 'short'
+      };
+
+      return new Intl.DateTimeFormat(undefined, options).format(date);
+    } catch (error) {
+      return "—";
+    }
   };
 
   useEffect(() => {
@@ -130,6 +159,26 @@ function AdminSubscription() {
 
   const cancelDeletePromoCode = () => {
     setDeletingPromoCode(null);
+  };
+
+  const handleDisablePromoCode = async (promoCode) => {
+    setDisablingPromoCode(promoCode);
+    setDisablingPromoLoading(true);
+    try {
+      const data = await disablePromoCode(promoCode, localStorage.getItem("token"));
+      const updatedCodes = promoCodes.map((code) =>
+        code.code === promoCode
+          ? { ...code, privilege_revoked: true, status: "Disabled" }
+          : code
+      );
+      setPromoCodes(updatedCodes);
+      showNotification(data.message || `Promo code ${promoCode} disabled successfully`);
+      setDisablingPromoCode(null);
+    } catch (err) {
+      showNotification(err.message || "Failed to disable promo code", "error");
+    } finally {
+      setDisablingPromoLoading(false);
+    }
   };
 
   const handleEditPlan = (planId) => {
@@ -657,7 +706,10 @@ function AdminSubscription() {
             ) : promoCodes.length === 0 ? (
               <div className="p-12 text-center text-slate-500">No promo codes generated yet.</div>
             ) : (
-              <div className="overflow-x-auto max-h-[300px]">
+              <div className="overflow-auto max-h-[400px]" style={{
+                scrollbarWidth: 'thin',
+                scrollbarColor: 'rgba(156, 163, 175, 0.5) rgba(243, 244, 246, 1)'
+              }}>
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-surface-container-low border-b border-surface-container sticky top-0">
                     <tr>
@@ -667,7 +719,8 @@ function AdminSubscription() {
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Used At</th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Used By</th>
                       <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Privilege</th>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Action</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Disable</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Delete</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container">
@@ -680,14 +733,28 @@ function AdminSubscription() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-on-surface-variant">
-                          {code.expires_at ? new Date(code.expires_at).toLocaleString("en-GB") : "—"}
+                          {formatLocalDateTime(code.expires_at)}
                         </td>
-                        <td className="px-6 py-4 text-sm text-on-surface-variant">{code.used_at ? new Date(code.used_at).toLocaleDateString("en-GB") : "—"}</td>
+                        <td className="px-6 py-4 text-sm text-on-surface-variant">{formatLocalDateTime(code.used_at)}</td>
                         <td className="px-6 py-4 text-sm font-semibold text-on-surface">{code.used_by || "—"}</td>
                         <td className="px-6 py-4">
                           <span className={`px-3 py-1 text-[10px] font-bold rounded-full uppercase ${code.privilege_revoked ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>
                             {code.privilege_revoked ? "Revoked" : "Active"}
                           </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {code.is_used && !code.privilege_revoked ? (
+                            <button
+                              onClick={() => handleDisablePromoCode(code.code)}
+                              disabled={disablingPromoLoading && disablingPromoCode === code.code}
+                              className="px-3 py-1.5 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 transition-all flex items-center gap-1 text-xs font-semibold whitespace-nowrap disabled:opacity-50"
+                            >
+                              <span className="material-symbols-outlined text-sm">block</span>
+                              <span className="hidden sm:inline">Disable</span>
+                            </button>
+                          ) : (
+                            <span className="text-xs text-on-surface-variant">—</span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <button

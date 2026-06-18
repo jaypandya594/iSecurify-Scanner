@@ -15,9 +15,25 @@ from app.api.admin.routes import router as admin_router
 from app.api.malware.routes import router as malware_router
 from app.db.base import SessionLocal
 from app.api.fix.routes import router as fix_router
-from app.api.admin.service import seed_default_subscription_plans
+from app.api.admin.service import seed_default_subscription_plans, delete_expired_unclaimed_promo_codes
+import threading
+import time
 
 app = FastAPI()
+
+# Background task to clean up expired unclaimed promo codes
+def cleanup_expired_promo_codes():
+    """Periodically clean up expired unclaimed promo codes (runs every hour)"""
+    while True:
+        try:
+            time.sleep(3600)  # Sleep for 1 hour
+            db = SessionLocal()
+            try:
+                delete_expired_unclaimed_promo_codes(db)
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"Error cleaning up expired promo codes: {e}")
 
 # Initialize database on startup
 @app.on_event("startup")
@@ -30,6 +46,10 @@ async def startup_event():
 
     try:
         seed_default_subscription_plans(db)
+
+        # Clean up expired unclaimed promo codes on startup
+        delete_expired_unclaimed_promo_codes(db)
+
         from scripts.create_admin import create_admin_user
         create_admin_user()
     except RuntimeError as e:
@@ -37,6 +57,12 @@ async def startup_event():
             status_code=500,
             detail=f"env details for admin are not set: {e}"
         )
+    finally:
+        db.close()
+
+    # Start background cleanup task
+    cleanup_thread = threading.Thread(target=cleanup_expired_promo_codes, daemon=True)
+    cleanup_thread.start()
 
 # CORS
 app.add_middleware(

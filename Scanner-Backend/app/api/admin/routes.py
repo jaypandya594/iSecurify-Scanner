@@ -8,6 +8,7 @@ from app.api.admin.service import (
     create_subscription_plan,
     delete_admin,
     delete_promo_code,
+    disable_promo_code,
     delete_subscription_plan,
     generate_promo_code,
     get_audit_logs,
@@ -88,6 +89,17 @@ def delete_promo(
 ):
     """Delete a promo code (both used and unused codes can be deleted)"""
     return delete_promo_code(code, db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
+
+
+@router.put("/promo-codes/{code}/disable")
+def disable_promo(
+    code: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Disable a claimed promo code and revoke its privileges"""
+    return disable_promo_code(code, db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
 
 
 @router.post("/personal-email/approve")

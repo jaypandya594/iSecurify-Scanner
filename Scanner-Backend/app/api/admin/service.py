@@ -141,6 +141,9 @@ def generate_promo_code(
 
 
 def get_promo_codes(db: Session) -> list[dict]:
+    # Clean up expired unclaimed promo codes before returning the list
+    delete_expired_unclaimed_promo_codes(db)
+
     codes = db.query(PromoCode).all()
     used_by_ids = {code.used_by for code in codes if code.used_by}
 
@@ -178,7 +181,7 @@ def get_promo_codes(db: Session) -> list[dict]:
         {
             "code": code.code,
             "is_used": code.is_used,
-            "used_at": code.used_at.isoformat() if code.used_at else None,
+            "used_at": code.used_at.isoformat() + "Z" if code.used_at else None,
             "used_by": (
                 owners_by_id.get(orgs_by_id.get(user.org_id).user_id).email
                 if code.used_by
@@ -187,10 +190,11 @@ def get_promo_codes(db: Session) -> list[dict]:
                 and orgs_by_id[user.org_id].user_id in owners_by_id
                 else None
             ),
-            "expires_at": code.expires_at.isoformat() if code.expires_at else None,
+            "expires_at": code.expires_at.isoformat() + "Z" if code.expires_at else None,
             "privilege_revoked": code.privilege_revoked,
             "status": (
-                "Expired" if _normalize_to_utc(code.expires_at) and _normalize_to_utc(code.expires_at) < datetime.now(timezone.utc)
+                "Disabled" if code.privilege_revoked and code.is_used
+                else "Expired" if _normalize_to_utc(code.expires_at) and _normalize_to_utc(code.expires_at) < datetime.now(timezone.utc)
                 else "Used" if code.is_used
                 else "Active"
             ),
@@ -232,6 +236,74 @@ def delete_promo_code(code_str: str, db: Session, current_admin: User | None = N
     return {
         "message": "Promo code deleted successfully",
         "code": promo.code,
+    }
+
+
+def disable_promo_code(code_str: str, db: Session, current_admin: User | None = None, ip_address: str | None = None, public_ip: str | None = None) -> dict:
+    """Disable a promo code and revoke its privileges from the organization."""
+    promo = db.query(PromoCode).filter(PromoCode.code == code_str).first()
+
+    if not promo:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+
+    if not promo.is_used:
+        raise HTTPException(status_code=400, detail="Cannot disable an unclaimed promo code")
+
+    if promo.privilege_revoked:
+        raise HTTPException(status_code=400, detail="Promo code is already disabled")
+
+    # Revoke the privilege and decrement max_domains for the organization
+    if promo.used_by:
+        user = db.query(User).filter(User.user_id == promo.used_by).first()
+        if user and user.org_id:
+            org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+            if org:
+                current_domains = len(org.domain or [])
+                org.max_domains = max(1, org.max_domains - 1, current_domains)
+
+    # Mark the promo code as privilege revoked
+    promo.privilege_revoked = True
+    db.commit()
+
+    if current_admin:
+        _record_audit_log(
+            db,
+            admin=current_admin,
+            action="PROMO_CODE_DISABLED",
+            target_type="promo_code",
+            target_id=promo.code,
+            details={"code": promo.code, "disabled_at": datetime.now(timezone.utc).isoformat()},
+            ip_address=ip_address,
+            public_ip=public_ip,
+        )
+
+    return {
+        "message": "Promo code disabled successfully and privileges revoked",
+        "code": promo.code,
+    }
+
+
+def delete_expired_unclaimed_promo_codes(db: Session) -> dict:
+    """Delete promo codes that have expired and were never claimed."""
+    now_utc = datetime.now(timezone.utc)
+
+    # Query for unclaimed promo codes that have expired
+    expired_unclaimed = db.query(PromoCode).filter(
+        PromoCode.is_used == False,
+        PromoCode.expires_at < now_utc,
+    ).all()
+
+    count = len(expired_unclaimed)
+
+    for promo in expired_unclaimed:
+        db.delete(promo)
+
+    if count > 0:
+        db.commit()
+
+    return {
+        "message": f"Deleted {count} expired unclaimed promo code(s)",
+        "deleted_count": count,
     }
 
 
@@ -597,32 +669,32 @@ def provision_admin_account(email: str, current_admin: User, db: Session, ip_add
 def delete_admin(email: str, current_admin: User, db: Session, ip_address: str | None = None, public_ip: str | None = None) -> dict:
     """Delete an admin account by email. Prevents deletion of the default admin."""
     normalized = _normalize_email(email)
-    
+
     # Get the protected admin email from environment
     protected_admin_email = os.getenv("ADMIN_EMAIL", "").lower().strip()
-    
+
     # Prevent deletion of the default admin
     if protected_admin_email and normalized == protected_admin_email:
         raise HTTPException(
             status_code=403,
             detail="Cannot delete the default administrator account"
         )
-    
+
     # Prevent admin from deleting themselves
     if normalized == current_admin.email.lower():
         raise HTTPException(
             status_code=400,
             detail="Cannot delete your own admin account"
         )
-    
+
     admin_user = db.query(User).filter(User.email == normalized, User.role == "admin").first()
-    
+
     if not admin_user:
         raise HTTPException(status_code=404, detail="Admin account not found")
-    
+
     db.delete(admin_user)
     db.commit()
-    
+
     if current_admin:
         _record_audit_log(
             db,
@@ -634,7 +706,7 @@ def delete_admin(email: str, current_admin: User, db: Session, ip_address: str |
             ip_address=ip_address,
             public_ip=public_ip,
         )
-    
+
     return {
         "message": "Admin account deleted successfully",
         "email": normalized,
