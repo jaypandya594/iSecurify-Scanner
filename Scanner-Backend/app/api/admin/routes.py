@@ -6,6 +6,7 @@ from app.api.admin.service import (
     block_email,
     create_personal_email_invitation,
     create_subscription_plan,
+    delete_admin,
     delete_promo_code,
     delete_subscription_plan,
     generate_promo_code,
@@ -127,6 +128,17 @@ def create_admin(
     current_admin: User = Depends(require_admin),
 ):
     return provision_admin_account(req.email, current_admin, db, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
+
+
+@router.delete("/admin/{email}")
+def delete_admin_account(
+    email: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Delete an admin account by email. Cannot delete the default admin or yourself."""
+    return delete_admin(email, current_admin, db, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
 
 
 @router.post("/blacklist/block")

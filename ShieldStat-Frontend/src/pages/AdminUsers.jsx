@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { getUsersByOrg, getBlacklistedEmails, blockUserByEmail, unblockUserByEmail, getScanSummaries, getTotalScans, createAdmin } from "../services/api";
+import { getUsersByOrg, getBlacklistedEmails, blockUserByEmail, unblockUserByEmail, getScanSummaries, getTotalScans, createAdmin, deleteAdmin } from "../services/api";
 
 function AdminUsers() {
   const [activeTab, setActiveTab] = useState("users");
@@ -21,6 +21,7 @@ function AdminUsers() {
   const [notification, setNotification] = useState({ text: "", type: "" });
   const [userSearch, setUserSearch] = useState("");
   const [blacklistSearch, setBlacklistSearch] = useState("");
+  const [deletingAdminEmail, setDeletingAdminEmail] = useState(null);
 
   const showNotification = (text, type = "success") => {
     setNotification({ text, type });
@@ -111,6 +112,27 @@ function AdminUsers() {
       showNotification(err.message, "error");
     } finally {
       setCreatingAdmin(false);
+    }
+  };
+
+  const handleDeleteAdmin = async (email) => {
+    if (!email) return;
+    
+    const confirmed = window.confirm(
+      `Delete admin ${email}? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingAdminEmail(email);
+    try {
+      const token = localStorage.getItem("token");
+      await deleteAdmin(email, token);
+      showNotification("Admin deleted successfully");
+      fetchUsers();
+    } catch (err) {
+      showNotification(err.message, "error");
+    } finally {
+      setDeletingAdminEmail(null);
     }
   };
 
@@ -314,16 +336,26 @@ function AdminUsers() {
                             key={u.user_id}
                             className="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low px-4 py-3"
                           >
-                            <span className="text-sm font-semibold text-on-surface truncate">{u.email}</span>
-                            {u.is_blacklisted ? (
-                              <span className="shrink-0 px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
-                                Blocked
-                              </span>
-                            ) : (
-                              <span className="shrink-0 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full uppercase">
-                                Active
-                              </span>
-                            )}
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <span className="text-sm font-semibold text-on-surface truncate">{u.email}</span>
+                              {u.is_blacklisted ? (
+                                <span className="shrink-0 px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
+                                  Blocked
+                                </span>
+                              ) : (
+                                <span className="shrink-0 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full uppercase">
+                                  Active
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAdmin(u.email)}
+                              disabled={deletingAdminEmail === u.email}
+                              className="shrink-0 rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-red-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {deletingAdminEmail === u.email ? "Deleting..." : "Delete"}
+                            </button>
                           </li>
                         ))}
                       </ul>

@@ -261,6 +261,15 @@ export async function createAdmin(email, token) {
   });
 }
 
+export async function deleteAdmin(email, token) {
+   const publicIp = await getPublicIp();
+   return request(`/admin/admin/${encodeURIComponent(email)}`, {
+      method: "DELETE",
+      token,
+      publicIp,
+   });
+}
+
 export async function blockUserByEmail(email, token) {
   const publicIp = await getPublicIp();
   return request("/admin/blacklist/block", {

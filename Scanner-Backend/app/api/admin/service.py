@@ -594,6 +594,53 @@ def provision_admin_account(email: str, current_admin: User, db: Session, ip_add
     }
 
 
+def delete_admin(email: str, current_admin: User, db: Session, ip_address: str | None = None, public_ip: str | None = None) -> dict:
+    """Delete an admin account by email. Prevents deletion of the default admin."""
+    normalized = _normalize_email(email)
+    
+    # Get the protected admin email from environment
+    protected_admin_email = os.getenv("ADMIN_EMAIL", "").lower().strip()
+    
+    # Prevent deletion of the default admin
+    if protected_admin_email and normalized == protected_admin_email:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot delete the default administrator account"
+        )
+    
+    # Prevent admin from deleting themselves
+    if normalized == current_admin.email.lower():
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete your own admin account"
+        )
+    
+    admin_user = db.query(User).filter(User.email == normalized, User.role == "admin").first()
+    
+    if not admin_user:
+        raise HTTPException(status_code=404, detail="Admin account not found")
+    
+    db.delete(admin_user)
+    db.commit()
+    
+    if current_admin:
+        _record_audit_log(
+            db,
+            admin=current_admin,
+            action="ADMIN_DELETED",
+            target_type="admin",
+            target_id=normalized,
+            details={"email": normalized, "deleted_by": current_admin.email},
+            ip_address=ip_address,
+            public_ip=public_ip,
+        )
+    
+    return {
+        "message": "Admin account deleted successfully",
+        "email": normalized,
+    }
+
+
 def _serialize_plan(plan: SubscriptionPlan) -> dict:
     return {
         "plan_id": plan.plan_id,
