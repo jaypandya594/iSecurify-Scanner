@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest, PersonalEmailApprovalRequest
+from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest, GeneratePromoCodeRequest, PersonalEmailApprovalRequest
 from app.api.admin.service import (
     block_email,
     create_personal_email_invitation,
@@ -56,11 +56,18 @@ def get_public_ip(request: Request) -> str | None:
 
 @router.post("/generate-promo")
 def generate_promo(
+    req: GeneratePromoCodeRequest,
     request: Request,
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ):
-    return generate_promo_code(db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
+    return generate_promo_code(
+        db,
+        expires_at=req.expires_at,
+        current_admin=current_admin,
+        ip_address=get_request_ip(request),
+        public_ip=get_public_ip(request),
+    )
 
 
 @router.get("/promo-codes")

@@ -91,9 +91,22 @@ def _detect_mass_blocking(db: Session, admin: User) -> None:
         )
 
 
-def generate_promo_code(db: Session, current_admin: User | None = None, ip_address: str | None = None, public_ip: str | None = None) -> dict:
-    code_str = _generate_promo_string()
+def generate_promo_code(
+    db: Session,
+    expires_at: datetime,
+    current_admin: User | None = None,
+    ip_address: str | None = None,
+    public_ip: str | None = None,
+) -> dict:
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    else:
+        expires_at = expires_at.astimezone(timezone.utc)
 
+    if expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Expiry date must be in the future")
+
+    code_str = _generate_promo_string()
     while db.query(PromoCode).filter(PromoCode.code == code_str).first():
         code_str = _generate_promo_string()
 
@@ -101,6 +114,7 @@ def generate_promo_code(db: Session, current_admin: User | None = None, ip_addre
         code_id=str(uuid.uuid4()),
         code=code_str,
         is_used=False,
+        expires_at=expires_at,
     )
 
     db.add(promo)
@@ -114,7 +128,7 @@ def generate_promo_code(db: Session, current_admin: User | None = None, ip_addre
             action="PROMO_CODE_CREATED",
             target_type="promo_code",
             target_id=promo.code,
-            details={"code": promo.code},
+            details={"code": promo.code, "expires_at": promo.expires_at.isoformat()},
             ip_address=ip_address,
             public_ip=public_ip,
         )
@@ -122,6 +136,7 @@ def generate_promo_code(db: Session, current_admin: User | None = None, ip_addre
     return {
         "message": "Promo code generated successfully",
         "code": promo.code,
+        "expires_at": promo.expires_at.isoformat(),
     }
 
 
@@ -152,6 +167,13 @@ def get_promo_codes(db: Session) -> list[dict]:
             for owner in db.query(User).filter(User.user_id.in_(owner_ids)).all()
         }
 
+    def _normalize_to_utc(timestamp: datetime | None) -> datetime | None:
+        if not timestamp:
+            return None
+        if timestamp.tzinfo is None:
+            return timestamp.replace(tzinfo=timezone.utc)
+        return timestamp.astimezone(timezone.utc)
+
     return [
         {
             "code": code.code,
@@ -164,6 +186,13 @@ def get_promo_codes(db: Session) -> list[dict]:
                 and user.org_id in orgs_by_id
                 and orgs_by_id[user.org_id].user_id in owners_by_id
                 else None
+            ),
+            "expires_at": code.expires_at.isoformat() if code.expires_at else None,
+            "privilege_revoked": code.privilege_revoked,
+            "status": (
+                "Expired" if _normalize_to_utc(code.expires_at) and _normalize_to_utc(code.expires_at) < datetime.now(timezone.utc)
+                else "Used" if code.is_used
+                else "Active"
             ),
         }
         for code in codes

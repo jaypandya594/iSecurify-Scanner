@@ -14,6 +14,7 @@ from app.api.auth.service import (
     send_forgot_password_otp, verify_otp_and_reset_password,
     reset_password_with_old_password,
     setup_user_totp, verify_user_totp, reset_user_totp,
+    _revoke_expired_promo_privileges,
 )
 from app.core.middleware import require_owner, protect
 from app.db.models import User, Organization
@@ -158,6 +159,12 @@ def get_profile(
     db: Session = Depends(get_db)
 ):
     org = db.query(Organization).filter(Organization.org_id == current_user.org_id).first()
+
+    # Check and revoke any expired promo privileges
+    if org:
+        _revoke_expired_promo_privileges(db, org.org_id)
+        db.refresh(org)
+
     return {
         "user_id": current_user.user_id,
         "org_id": current_user.org_id,

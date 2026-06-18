@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, EmailStr
 
 
@@ -12,6 +13,10 @@ class CreateAdminRequest(BaseModel):
 class PersonalEmailApprovalRequest(BaseModel):
     email: EmailStr
     notes: str | None = None
+
+
+class GeneratePromoCodeRequest(BaseModel):
+    expires_at: datetime
 
 
 class SubscriptionPlanCreate(BaseModel):

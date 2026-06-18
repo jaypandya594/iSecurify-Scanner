@@ -223,10 +223,10 @@ def register(email: str, password: str, domain: str, db: Session, invite_token: 
                 pending_registration_domain=domain,
             )
             db.add(new_user)
-        
+
         db.commit()
         logger.info(f"User registered: {email_lower}")
-        
+
     except Exception as db_err:
         db.rollback()
         logger.error(f"Database error during registration: {str(db_err)}")
@@ -423,8 +423,8 @@ def setup_user_totp(email: str, password: str, db: Session) -> dict:
 
     uri = get_totp_uri(secret=secret, email=user.email)
     return {
-        "otpauth_uri": uri,   
-        "secret": secret,     
+        "otpauth_uri": uri,
+        "secret": secret,
     }
 
 
@@ -675,29 +675,74 @@ def get_members(owner: User, db: Session):
         for m in members
     ]
 
+def _revoke_expired_promo_privileges(db: Session, org_id: str | None = None) -> None:
+    """Check for expired promos and revoke domain privileges."""
+    now_utc = datetime.now(timezone.utc)
+
+    # Query for redeemed promos that have expired and privilege not yet revoked
+    query = db.query(PromoCode).filter(
+        PromoCode.is_used == True,
+        PromoCode.used_by != None,
+        PromoCode.expires_at < now_utc,
+        PromoCode.privilege_revoked == False,
+    )
+
+    # If org_id is provided, only check promos for that org
+    if org_id:
+        user_ids = [u.user_id for u in db.query(User).filter(User.org_id == org_id).all()]
+        query = query.filter(PromoCode.used_by.in_(user_ids)) if user_ids else query.filter(False)
+
+    expired_promos = query.all()
+
+    for promo in expired_promos:
+        user = db.query(User).filter(User.user_id == promo.used_by).first()
+        if not user or not user.org_id:
+            # If user not found, just mark as revoked
+            promo.privilege_revoked = True
+            continue
+
+        org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+        if org:
+            # Revoke the extra domain privilege, keeping minimum of 1
+            org.max_domains = max(1, org.max_domains - 1)
+
+        promo.privilege_revoked = True
+
+    if expired_promos:
+        db.commit()
+
 def redeem_promo_code(user_id: str, code: str, db: Session):
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user or not user.org_id:
         raise HTTPException(status_code=400, detail="User not associated with an organization")
 
     promo = db.query(PromoCode).filter(PromoCode.code == code).first()
-    
+
     if not promo:
         raise HTTPException(status_code=404, detail="Promo code not found")
-        
+
     if promo.is_used:
         raise HTTPException(status_code=400, detail="Promo code already used")
-        
+
+    now_utc = datetime.now(timezone.utc)
+    if promo.expires_at and promo.expires_at.tzinfo is None:
+        promo_expiry = promo.expires_at.replace(tzinfo=timezone.utc)
+    else:
+        promo_expiry = promo.expires_at
+
+    if promo_expiry < now_utc:
+        raise HTTPException(status_code=400, detail="Promo code has expired")
+
     org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
     promo.is_used = True
-    promo.used_at = datetime.now(timezone.utc)
+    promo.used_at = now_utc
     promo.used_by = user_id
-    
+
     org.max_domains += 1
-    
+
     db.commit()
     return {
         "message": "Promo code redeemed successfully",
@@ -712,6 +757,12 @@ def add_domain(user_id: str, domain: str, db: Session):
     org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+
+    # Check and revoke any expired promo privileges
+    _revoke_expired_promo_privileges(db, org.org_id)
+
+    # Refresh org after revocation check
+    db.refresh(org)
 
     domain = domain.strip().lower()
     if not domain:

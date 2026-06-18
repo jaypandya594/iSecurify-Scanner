@@ -16,7 +16,7 @@ class Organization(Base):
 
 class User(Base):
     __tablename__ = "users"
- 
+
     user_id                   = Column(String(36), primary_key=True)
     org_id                    = Column(String(36), ForeignKey("organizations.org_id"), nullable=True)
     email                     = Column(String(255), unique=True, nullable=False)
@@ -30,12 +30,12 @@ class User(Base):
     verification_token        = Column(String(255), unique=True, nullable=True)
     verification_expires_at   = Column(TIMESTAMP, nullable=True)
     pending_registration_domain = Column(Text, nullable=True)
- 
+
     # ── NEW: TOTP columns ─────────────────────────────────────────────────────
     totp_secret     = Column(String(64), nullable=True)
     # NULL  → user has never set up Google Authenticator
     # value → the Base32 secret tied to their Authenticator app entry
- 
+
     is_totp_enabled = Column(Boolean, nullable=False, server_default="false")
     # False → setup not yet confirmed (secret might exist but not verified)
     # True  → user successfully verified a code at least once; TOTP is active
@@ -81,6 +81,8 @@ class PromoCode(Base):
     is_used = Column(Boolean, default=False, nullable=False)
     used_at = Column(TIMESTAMP, nullable=True)
     used_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    expires_at = Column(TIMESTAMP, nullable=False)
+    privilege_revoked = Column(Boolean, default=False, nullable=False)
 
 
 class SubscriptionPlan(Base):
