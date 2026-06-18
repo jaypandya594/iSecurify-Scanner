@@ -58,10 +58,11 @@ class PersonalEmailInvitation(Base):
     invitation_id = Column(String(36), primary_key=True)
     email = Column(String(255), unique=True, nullable=False)
     token = Column(String(255), unique=True, nullable=False)
-    status = Column(String(20), nullable=False, default="approved")
+    status = Column(String(20), nullable=False, default="pending")
     approved_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
     approved_at = Column(TIMESTAMP, nullable=True)
+    expires_at = Column(TIMESTAMP, nullable=True)
     notes = Column(Text, nullable=True)
 
 

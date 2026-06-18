@@ -59,6 +59,15 @@ PUBLIC_EMAIL_DOMAINS = {
 ADMIN_TOTP_REQUIRED: bool = os.getenv("ADMIN_TOTP_REQUIRED", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _normalize_datetime_to_utc(timestamp: datetime | None) -> datetime | None:
+    """Convert timezone-naive or aware datetime to UTC-aware datetime."""
+    if not timestamp:
+        return None
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
+
+
 def hashPassword(password: str) -> str:
     salt = bcrypt.gensalt(10)
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
@@ -158,14 +167,25 @@ def _personal_email_invitation_is_valid(email_lower: str, invite_token: str | No
     if not invite_token:
         return False
 
+    now_utc = datetime.now(timezone.utc)
     invitation = (
         db.query(PersonalEmailInvitation)
         .filter(PersonalEmailInvitation.email == email_lower)
         .filter(PersonalEmailInvitation.token == invite_token)
-        .filter(PersonalEmailInvitation.status == "approved")
+        .filter(PersonalEmailInvitation.status.in_(["pending", "accepted"]))
         .first()
     )
-    return invitation is not None
+    
+    if not invitation:
+        return False
+    
+    # If expires_at is None, treat it as valid (for backward compatibility with old invitations)
+    if invitation.expires_at is None:
+        return True
+    
+    # Check if invitation hasn't expired
+    expires_at_utc = _normalize_datetime_to_utc(invitation.expires_at)
+    return expires_at_utc > now_utc if expires_at_utc else True
 
 
 def register(email: str, password: str, domain: str, db: Session, invite_token: str | None = None):
@@ -195,14 +215,6 @@ def register(email: str, password: str, domain: str, db: Session, invite_token: 
             raise HTTPException(
                 status_code=400,
                 detail=f"Email domain must match your organization domain '{domain}'.",
-            )
-
-        # Reject if another owner already owns this domain
-        if _email_domain_has_owner(email_lower, db):
-            email_domain = email_lower.split("@")[-1]
-            raise HTTPException(
-                status_code=400,
-                detail=f"An account for '@{email_domain}' already exists. Cannot create a new account, you need to be invited by the owner.",
             )
 
     token = secrets.token_urlsafe(32)
@@ -279,24 +291,16 @@ def verify_registration(token: str, db: Session):
         raise HTTPException(status_code=400, detail="Invalid or expired verification link")
 
     now_utc = datetime.now(timezone.utc)
-    expires_at = user.verification_expires_at
-    if not expires_at:
+    expires_at_utc = _normalize_datetime_to_utc(user.verification_expires_at)
+    
+    if not expires_at_utc:
         raise HTTPException(status_code=400, detail="Invalid or expired verification link")
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-    if expires_at < now_utc:
+    if expires_at_utc < now_utc:
         db.rollback()
         raise HTTPException(status_code=400, detail="Verification link has expired. Please register again.")
 
     email_lower = user.email.lower().strip()
-
-    if _email_domain_has_owner(email_lower, db):
-        email_domain = email_lower.split("@")[-1]
-        raise HTTPException(
-            status_code=400,
-            detail=f"An account for '@{email_domain}' already exists. You can no longer use this verification link.",
-        )
 
     domain = (user.pending_registration_domain or "").strip().lower()
     if not domain:
@@ -304,6 +308,17 @@ def verify_registration(token: str, db: Session):
 
     try:
         _finalize_owner_registration(user, domain, db)
+        
+        # Mark the personal email invitation as accepted if one exists
+        invitation = (
+            db.query(PersonalEmailInvitation)
+            .filter(PersonalEmailInvitation.email == email_lower)
+            .first()
+        )
+        if invitation:
+            invitation.status = "accepted"
+            db.add(invitation)
+        
         db.commit()
         logger.info(f"User verified: {email_lower}")
     except Exception as err:
@@ -482,12 +497,10 @@ def reset_user_totp(email: str, otp: str, db: Session) -> dict:
     if not otp_record:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    expires_at = otp_record.expires_at
     now_utc = datetime.now(timezone.utc)
-    if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    expires_at_utc = _normalize_datetime_to_utc(otp_record.expires_at)
 
-    if not expires_at or expires_at < now_utc:
+    if not expires_at_utc or expires_at_utc < now_utc:
         db.delete(otp_record)
         db.commit()
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
@@ -554,11 +567,9 @@ def verify_otp_and_reset_password(email: str, otp: str, new_password: str, db: S
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
     now_utc = datetime.now(timezone.utc)
-    expires_at = otp_record.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    expires_at_utc = _normalize_datetime_to_utc(otp_record.expires_at)
 
-    if expires_at < now_utc:
+    if not expires_at_utc or expires_at_utc < now_utc:
         db.delete(otp_record)
         db.commit()
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
@@ -684,11 +695,10 @@ def _revoke_expired_promo_privileges(db: Session, org_id: str | None = None) -> 
     """Check for expired promos and revoke domain privileges."""
     now_utc = datetime.now(timezone.utc)
 
-    # Query for redeemed promos that have expired and privilege not yet revoked
+    # Query for redeemed promos that have privilege not yet revoked
     query = db.query(PromoCode).filter(
         PromoCode.is_used == True,
         PromoCode.used_by != None,
-        PromoCode.expires_at < now_utc,
         PromoCode.privilege_revoked == False,
     )
 
@@ -697,7 +707,13 @@ def _revoke_expired_promo_privileges(db: Session, org_id: str | None = None) -> 
         user_ids = [u.user_id for u in db.query(User).filter(User.org_id == org_id).all()]
         query = query.filter(PromoCode.used_by.in_(user_ids)) if user_ids else query.filter(False)
 
-    expired_promos = query.all()
+    all_promos = query.all()
+    
+    # Filter for expired promos in Python to handle timezone-aware/naive comparison
+    expired_promos = [
+        promo for promo in all_promos
+        if promo.expires_at and _normalize_datetime_to_utc(promo.expires_at) < now_utc
+    ]
 
     for promo in expired_promos:
         user = db.query(User).filter(User.user_id == promo.used_by).first()
