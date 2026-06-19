@@ -94,9 +94,12 @@ function AdminSubscription() {
     }
   };
 
-  const filteredUsers = allUsers.filter(user =>
-    user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
-  );
+  // Exclude admin users from the selectable list for assigning promo codes
+  const filteredUsers = allUsers
+    .filter(user => String(user.role || '').toLowerCase() !== 'admin')
+    .filter(user =>
+      user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
+    );
 
   const handleSelectUser = (email) => {
     setAssignPromoEmail(email);
