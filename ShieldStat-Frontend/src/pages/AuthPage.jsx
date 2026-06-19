@@ -70,14 +70,13 @@ function AuthPage() {
          }
 
          const data = await loginUser(email, password, captchaToken);
-         localStorage.setItem("token", data.token);
-         localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("user", JSON.stringify(data.user));  // keep this, it's fine
 
-         if (data.user?.role === "admin") {
-            navigate("/admin");
-         } else {
-            navigate("/scan-dashboard");
-         }
+      if (data.user?.role === "admin") {
+         navigate("/admin");
+      } else {
+         navigate("/scan-dashboard");
+      }
       } catch (err) {
          setError(err.message);
       } finally {

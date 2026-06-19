@@ -16,6 +16,7 @@ from app.api.malware.routes import router as malware_router
 from app.db.base import SessionLocal
 from app.api.fix.routes import router as fix_router
 from app.api.admin.service import seed_default_subscription_plans
+from app.api.report_issue.routes import router as report_issue_router
 
 app = FastAPI()
 
@@ -56,6 +57,7 @@ app.include_router(fix_router)
 app.include_router(admin_router)
 app.include_router(webhook_scanner_router)
 app.include_router(malware_router)
+app.include_router(report_issue_router)
 
 
 if __name__ == "__main__":

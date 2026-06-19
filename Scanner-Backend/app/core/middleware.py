@@ -1,4 +1,4 @@
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -8,13 +8,23 @@ from app.db.models import User, Blacklist
 from app.api.auth.service import decode_token
 
 JWT_SECRET = os.getenv("JWT_SECRET")
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)  # auto_error=False so cookie can be tried first
 
 def protect(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
-    token = credentials.credentials
+    # 1. Try cookie first
+    token = request.cookies.get("token")
+
+    # 2. Fall back to Authorization header
+    if not token and credentials:
+        token = credentials.credentials
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     payload = decode_token(token)
 
     user_id = payload.get("user_id")

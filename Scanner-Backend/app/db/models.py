@@ -370,4 +370,31 @@ class ResolvedFinding(Base):
     __table_args__ = (
         Index("idx_resolved_org", "org_id"),
         Index("idx_resolved_domain", "domain"),
+<<<<<<< Updated upstream
     )
+=======
+    )
+
+class ReportedIssue(Base):
+    __tablename__ = "reported_issues"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(String(36), nullable=True)
+    domain = Column(Text, nullable=False)
+    subdomain = Column(String(255), nullable=True)
+    rule = Column(String(255), nullable=False)
+    severity = Column(String(50), nullable=True)
+    issue_type = Column(String(100), nullable=False)
+    message = Column(Text, nullable=True)
+    status = Column(String(50), nullable=False, default="open")   # open | reviewed | dismissed
+    ref_id = Column(String(20), nullable=False, unique=True)
+    reported_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+    reviewed_at = Column(TIMESTAMP, nullable=True)
+    reviewed_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    admin_note = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_reported_issue_domain", "domain"),
+        Index("idx_reported_issue_status", "status"),
+    )
+>>>>>>> Stashed changes

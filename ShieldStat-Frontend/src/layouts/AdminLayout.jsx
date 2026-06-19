@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, Navigate } from "react-router-dom";
 import logo from "../assets/logo.svg";
 import Navbar from "../components/Navbar";
 import ResetPasswordModal from "../components/ResetPasswordModal";
@@ -51,7 +51,6 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
     logoutAndRedirect();
   };
 
-  // Close settings popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (settingsRef.current && !settingsRef.current.contains(event.target)) {
@@ -61,6 +60,20 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+  let currentUser = null;
+  try {
+    currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    currentUser = null;
+  }
+
+  if (!currentUser) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  if (currentUser.role !== "admin") {
+    return <Navigate to="/scan-dashboard" replace />;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
@@ -89,9 +102,7 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
           aria-label={isOpen ? "Close sidebar" : "Open sidebar"}
         >
           <span className="material-symbols-outlined">
-            {isOpen
-              ? "keyboard_double_arrow_left"
-              : "keyboard_double_arrow_right"}
+            {isOpen ? "keyboard_double_arrow_left" : "keyboard_double_arrow_right"}
           </span>
         </button>
 
@@ -102,6 +113,7 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
               : "pointer-events-none opacity-0 lg:pointer-events-auto lg:opacity-100"
           }`}
         >
+          {/* Logo */}
           <div className="mb-12 px-2">
             <div className="flex items-center gap-3">
               <img
@@ -112,6 +124,7 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
             </div>
           </div>
 
+          {/* Nav links */}
           <nav className="flex-1 space-y-2">
             <SidebarLink to="/admin" icon="group" isOpen={isOpen}>
               User Management
@@ -122,14 +135,19 @@ function AdminLayout({ isDarkMode, onToggleDarkMode }) {
             <SidebarLink to="/admin/audit" icon="shield" isOpen={isOpen}>
               Audit & Security
             </SidebarLink>
+            {/* ── New: Reported Issues ── */}
+            <SidebarLink to="/admin/reports" icon="flag" isOpen={isOpen}>
+              Reported Issues
+            </SidebarLink>
           </nav>
 
+          {/* Bottom section */}
           <div className="pt-8 mt-8 border-t border-slate-200 dark:border-slate-800 space-y-2">
             <SidebarLink to="/admin/profile" icon="person" isOpen={isOpen}>
               Profile
             </SidebarLink>
 
-            {/* Settings Button */}
+            {/* Settings */}
             <div ref={settingsRef} className="relative">
               {isSettingsOpen && (
                 <div className="absolute bottom-full left-0 right-0 z-20 mb-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 shadow-lg">

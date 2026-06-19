@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends , Response
 from app.api.auth.schemas import (
     RegisterRequest, LoginRequest, InviteRequest,
     RedeemPromoRequest, ForgotPasswordOtpRequest,
@@ -53,20 +53,34 @@ def verify_email_route(req: VerifyEmailRequest, db: Session = Depends(get_db)):
 
 
 @router.post('/login')
-async def login(req: LoginRequest, db: Session = Depends(get_db)):
+async def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
     await verify_captcha(req.captcha_token)
 
-    email = req.email
-    password = req.password
-
-    if not email or not password:
+    if not req.email or not req.password:
         raise HTTPException(status_code=400, detail="Please fill all the fields")
 
     try:
-        return login_user(email, password, db)
+        result = login_user(req.email, req.password, db)
+
+        # Set HttpOnly cookie — JS can never read or overwrite this
+        response.set_cookie(
+            key="token",
+            value=result["token"],
+            httponly=True,
+            secure=False,       # change to True when you deploy on HTTPS
+            samesite="lax",
+            max_age=60 * 60 * 24,  # 24 hours (matches your generateToken)
+            path="/",
+        )
+
+        # Return user info but NOT the token in the body
+        return {
+            "message": "Login successful",
+            "user": result["user"],
+        }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.post('/forgot-password')
@@ -177,3 +191,8 @@ def redeem_promo(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail="Internal Server Error")
+    
+@router.post('/logout')
+def logout(response: Response):
+    response.delete_cookie(key="token", path="/")
+    return {"message": "Logged out"}
