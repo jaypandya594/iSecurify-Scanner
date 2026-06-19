@@ -21,6 +21,7 @@ const Assessment = lazy(() => import("./pages/Assessment"));
 const MalwareScanHistory = lazy(() => import("./pages/MalwareScanHistory"));
 const MalwareDashboard = lazy(() => import("./pages/MalwareDashboard"));
 const Profile = lazy(() => import("./pages/Profile"));
+const AdminReports = lazy(() => import("./pages/AdminReports"));
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -101,6 +102,7 @@ function App() {
         <Route path="personal-invitations" element={<PersonalInvitations />} />
         <Route path="subscription" element={<AdminSubscription />} />
         <Route path="audit" element={<AdminAudit />} />
+        <Route path="reports" element={<AdminReports />} />
         <Route path="profile" element={<Profile />} />
       </Route>
       </Routes>

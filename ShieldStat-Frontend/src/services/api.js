@@ -470,3 +470,18 @@ export function saveResolvedFinding({ orgId, domain, rule, subdomain, fixType, c
 export function getResolvedFindings(domain, token) {
   return request(`/fix/resolved/${encodeURIComponent(domain)}`, { token });
 }
+
+export function reportIssue({ domain, subdomain, rule, severity, issueType, message, orgId }) {
+  return request("/report-issue", {
+    method: "POST",
+    body: {
+      domain,
+      subdomain,
+      rule,
+      severity,
+      issueType,
+      message,
+      org_id: orgId,
+    },
+  });
+}
