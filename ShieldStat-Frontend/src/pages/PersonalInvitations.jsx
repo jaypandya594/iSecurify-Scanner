@@ -64,6 +64,21 @@ export default function PersonalInvitations() {
     }
   };
 
+  const getStatusBadgeStyles = (status) => {
+    const statusMap = {
+      pending: { bg: "bg-yellow-50", border: "border-yellow-200", text: "text-yellow-700", label: "Pending" },
+      accepted: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", label: "Accepted" },
+      expired: { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", label: "Expired" },
+    };
+    return statusMap[status] || statusMap.pending;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
+
   return (
     <div className="min-h-screen bg-surface">
       {notification.text && (
@@ -132,23 +147,41 @@ export default function PersonalInvitations() {
             <p className="text-sm text-slate-500">No personal-email invitations have been approved yet.</p>
           ) : (
             <div className="space-y-3">
-              {personalInvites.map((item) => (
-                <article key={item.invitation_id || item.email} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{item.email}</p>
-                    <p className="text-xs text-slate-500">Token: {item.token || "—"}</p>
-                    <p className="text-xs text-slate-500">Status: <span className="font-semibold text-slate-700">{item.status || "approved"}</span></p>
-                    {item.notes ? <p className="text-xs text-slate-500">Notes: {item.notes}</p> : null}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeletePersonalInvite(item.email)}
-                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                  >
-                    Delete
-                  </button>
-                </article>
-              ))}
+              {personalInvites.map((item) => {
+                const statusStyles = getStatusBadgeStyles(item.status);
+                return (
+                  <article key={item.invitation_id || item.email} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <p className="text-sm font-semibold text-slate-900">{item.email}</p>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold border ${statusStyles.bg} ${statusStyles.border} ${statusStyles.text}`}>
+                          {statusStyles.label}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {item.expires_at && (
+                          <p className="text-xs text-slate-500">
+                            Expires: <span className="font-semibold text-slate-700">{formatDate(item.expires_at)}</span>
+                          </p>
+                        )}
+                        {item.created_at && (
+                          <p className="text-xs text-slate-500">
+                            Created: <span className="font-semibold text-slate-700">{formatDate(item.created_at)}</span>
+                          </p>
+                        )}
+                      </div>
+                      {item.notes ? <p className="text-xs text-slate-500 mt-1">Notes: {item.notes}</p> : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePersonalInvite(item.email)}
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                    >
+                      Delete
+                    </button>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>

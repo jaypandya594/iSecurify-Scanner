@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.auth.service import hashPassword
+from app.api.auth.service import hashPassword, verifyPassword
 from app.db.models import (
     AuditLog,
     Blacklist,
@@ -502,19 +502,42 @@ def create_personal_email_invitation(email: str, current_admin: User, db: Sessio
 
 def list_personal_email_invitations(db: Session) -> list[dict]:
     invitations = db.query(PersonalEmailInvitation).order_by(PersonalEmailInvitation.created_at.desc()).all()
+    now = datetime.now(timezone.utc)
+    
     return [
         {
             "invitation_id": item.invitation_id,
             "email": item.email,
             "token": item.token,
-            "status": item.status,
+            "status": _calculate_invitation_status(item, db, now),
             "approved_by": item.approved_by,
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "approved_at": item.approved_at.isoformat() if item.approved_at else None,
+            "expires_at": item.expires_at.isoformat() if item.expires_at else None,
             "notes": item.notes,
         }
         for item in invitations
     ]
+
+
+def _calculate_invitation_status(invitation: PersonalEmailInvitation, db: Session, now: datetime) -> str:
+    """
+    Calculate the actual status of an invitation:
+    - "expired" if current time > expires_at
+    - "accepted" if user signed up with the invited email
+    - "pending" otherwise
+    """
+    # Check if expired
+    if invitation.expires_at and now > invitation.expires_at:
+        return "expired"
+    
+    # Check if user has signed up with this email
+    user = db.query(User).filter(User.email == invitation.email).first()
+    if user:
+        return "accepted"
+    
+    # Still pending
+    return "pending"
 
 
 def revoke_personal_email_invitation(email: str, db: Session) -> dict:
@@ -848,3 +871,86 @@ def delete_subscription_plan(plan_id: str, db: Session) -> dict:
     db.commit()
 
     return {"message": "Subscription plan deleted successfully", "plan_id": plan_id}
+
+
+def delete_user(user_id: str, admin_password: str, current_admin: User, db: Session, ip_address: str | None = None, public_ip: str | None = None) -> dict:
+    """
+    Delete a user from the system. Requires admin password verification.
+    Properly handles cascading deletes for organizations owned by the user.
+    """
+    # Verify admin password
+    if not verifyPassword(admin_password, current_admin.password):
+        raise HTTPException(status_code=401, detail="Invalid admin password")
+    
+    # Find the user to delete
+    user_to_delete = db.query(User).filter(User.user_id == user_id).first()
+    if not user_to_delete:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent admin from deleting themselves
+    if user_to_delete.user_id == current_admin.user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
+    
+    # Store user details for audit log
+    deleted_email = user_to_delete.email
+    deleted_org_id = user_to_delete.org_id
+    should_delete_org = False
+    
+    # Find organizations owned by this user
+    owned_orgs = db.query(Organization).filter(Organization.user_id == user_id).all()
+    
+    # Check if any owned organizations have other users
+    for org in owned_orgs:
+        other_users_count = db.query(User).filter(
+            User.org_id == org.org_id,
+            User.user_id != user_id
+        ).count()
+        if other_users_count > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot delete organization owner. Organization {org.org_id} has other members. Transfer ownership first."
+            )
+    
+    # Step 1: Clear user's org_id to break circular FK reference
+    user_to_delete.org_id = None
+    
+    # Step 2: Delete related audit logs, promo codes, invitations
+    db.query(AuditLog).filter(AuditLog.admin_id == user_id).delete(synchronize_session=False)
+    db.query(PromoCode).filter(PromoCode.used_by == user_id).delete(synchronize_session=False)
+    db.query(PersonalEmailInvitation).filter(PersonalEmailInvitation.approved_by == user_id).delete(synchronize_session=False)
+    
+    # Step 3: Delete organizations owned by this user (they have no other members)
+    for org in owned_orgs:
+        db.delete(org)
+        should_delete_org = True
+    
+    db.flush()  # Flush to commit all deletes before deleting user
+    
+    # Step 4: NOW delete the user
+    db.delete(user_to_delete)
+    db.commit()
+    
+    # Record audit log
+    _record_audit_log(
+        db,
+        admin=current_admin,
+        action="USER_DELETED",
+        target_type="user",
+        target_id=user_id,
+        details={
+            "email": deleted_email,
+            "org_id": deleted_org_id,
+            "deleted_by": current_admin.email,
+            "organizations_deleted": len(owned_orgs)
+        },
+        ip_address=ip_address,
+        public_ip=public_ip,
+    )
+    
+    return {
+        "message": "User deleted successfully",
+        "user_id": user_id,
+        "email": deleted_email,
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "organizations_deleted": len(owned_orgs),
+    }

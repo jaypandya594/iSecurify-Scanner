@@ -15,6 +15,11 @@ class PersonalEmailApprovalRequest(BaseModel):
     notes: str | None = None
 
 
+class DeleteUserRequest(BaseModel):
+    user_id: str
+    admin_password: str
+
+
 class GeneratePromoCodeRequest(BaseModel):
     expires_at: datetime
 

@@ -6,6 +6,14 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 import enum
 
+
+class InvitationStatus(str, enum.Enum):
+    """Status for user invitations"""
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    EXPIRED = "expired"
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 

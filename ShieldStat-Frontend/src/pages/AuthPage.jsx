@@ -128,10 +128,18 @@ function AuthPage() {
       setError("");
       setSuccess("");
 
-      if (!email || !password || !confirmPassword || !domain.trim()) {
-         setError("Please fill all the fields");
+      if (!email || !password || !confirmPassword) {
+         setError("Please fill all required fields");
          return;
       }
+
+      // For regular signups (no invite): domain is required
+      // For invited users: domain is optional
+      if (!hasInviteToken && !domain.trim()) {
+         setError("Domain is required for new organization signup");
+         return;
+      }
+
       if (password !== confirmPassword) {
          setError("Passwords do not match");
          return;
@@ -361,7 +369,7 @@ function AuthPage() {
       signup: {
          heading: hasInviteToken ? "Finish Your Invitation" : "Create Account",
          sub: hasInviteToken
-            ? "Create your password and domain to activate your approved personal-email access."
+            ? "Create your password. Domain is optional for invited users."
             : "Join the ecosystem of digital trust",
       },
       forgot: { heading: "Forgot Password", sub: "Enter your email to receive a reset OTP" },
@@ -663,12 +671,12 @@ function AuthPage() {
 
                         <div>
                            <label className="text-[11px] font-semibold text-on-surface-variant">
-                              Domain
+                              Domain {hasInviteToken ? "(Optional)" : "(Required)"}
                            </label>
                            <input
                               id="register-domain"
                               type="text"
-                              placeholder="example.com"
+                              placeholder={hasInviteToken ? "example.com (optional)" : "example.com"}
                               value={domain}
                               onChange={(e) => setDomain(e.target.value)}
                               className="w-full mt-1 p-2.5 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-on-surface-variant/70"

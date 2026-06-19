@@ -194,28 +194,34 @@ def register(email: str, password: str, domain: str, db: Session, invite_token: 
     if existing_user and existing_user.email_verified:
         raise HTTPException(status_code=400, detail="User already exists")
 
-    domain = _normalize_domain(domain)
-    if not domain:
-        raise HTTPException(status_code=400, detail="Domain is required")
-
     is_invited_personal_signup = _personal_email_invitation_is_valid(email_lower, invite_token, db)
 
-    # Domain validation only applies to regular signups, NOT invited users
-    # Invited users join existing organizations and can use any email address
-    if DOMAIN_EMAIL_VALIDATION_ENABLED and not is_invited_personal_signup:
-        # Public email domains are rejected for regular signups (without invitation)
-        if _is_public_email_domain(email_lower):
-            raise HTTPException(
-                status_code=400,
-                detail="Please use your organization email address for signup. Personal email providers are not allowed without an approved invitation token.",
-            )
+    # For invited users: skip all domain and email validation
+    if is_invited_personal_signup:
+        # Invited users can enter ANY domain (including empty)
+        domain = _normalize_domain(domain) if domain else ""
+    else:
+        # For regular signups: domain is required and must be valid
+        domain = _normalize_domain(domain)
+        if not domain:
+            raise HTTPException(status_code=400, detail="Domain is required")
 
-        # Email domain must match the organization domain they're signing up under
-        if not _email_domain_matches_org(email_lower, domain):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Email domain must match your organization domain '{domain}'.",
-            )
+        # Domain validation only applies to regular signups, NOT invited users
+        # Invited users join existing organizations and can use any email address
+        if DOMAIN_EMAIL_VALIDATION_ENABLED:
+            # Public email domains are rejected for regular signups (without invitation)
+            if _is_public_email_domain(email_lower):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Please use your organization email address for signup. Personal email providers are not allowed without an approved invitation token.",
+                )
+
+            # Email domain must match the organization domain they're signing up under
+            if not _email_domain_matches_org(email_lower, domain):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Email domain must match your organization domain '{domain}'.",
+                )
 
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=VERIFICATION_EXPIRY_HOURS)

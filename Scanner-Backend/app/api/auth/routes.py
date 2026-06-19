@@ -29,12 +29,18 @@ async def register_route(req: RegisterRequest, db: Session = Depends(get_db)):
     email = req.email
     password = req.password
     domain = req.domain
+    invite_token = req.invite_token
 
-    if not email or not password or not domain or not domain.strip():
-        raise HTTPException(status_code=400, detail="Please fill all the fields")
+    # Validate required fields
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+
+    # Domain is only required for regular signups (no invitation)
+    if not invite_token and (not domain or not domain.strip()):
+        raise HTTPException(status_code=400, detail="Domain is required for new organization signup")
 
     try:
-        return register(email, password, domain, db, invite_token=req.invite_token)
+        return register(email, password, domain, db, invite_token=invite_token)
     except HTTPException:
         raise
     except Exception as e:

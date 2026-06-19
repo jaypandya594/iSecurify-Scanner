@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
-    domain: str
+    domain: str | None = None
     name: str | None = None
     invite_token: str | None = None
     captcha_token: str | None = None
