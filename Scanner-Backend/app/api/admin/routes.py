@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest, GeneratePromoCodeRequest, PersonalEmailApprovalRequest
+from app.api.admin.schemas import AssignPromoCodeRequest, BlacklistEmailRequest, CreateAdminRequest, GeneratePromoCodeRequest, PersonalEmailApprovalRequest
 from app.api.admin.service import (
+    assign_promo_code_to_user,
     block_email,
     create_personal_email_invitation,
     create_subscription_plan,
@@ -78,6 +79,24 @@ def list_promo_codes(
     _current_admin: User = Depends(require_admin),
 ):
     return get_promo_codes(db)
+
+
+@router.post("/promo-codes/assign")
+def assign_promo(
+    req: AssignPromoCodeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Assign a promo code directly to a user, applying the benefit immediately."""
+    return assign_promo_code_to_user(
+        promo_code=req.promo_code,
+        email=req.email,
+        db=db,
+        current_admin=current_admin,
+        ip_address=get_request_ip(request),
+        public_ip=get_public_ip(request),
+    )
 
 
 @router.delete("/promo-codes/{code}/delete")

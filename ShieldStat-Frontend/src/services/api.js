@@ -222,6 +222,16 @@ export function getPromoCodes(token) {
   return request("/admin/promo-codes", { token });
 }
 
+export async function assignPromoCodeToUser(promoCode, email, token) {
+  const publicIp = await getPublicIp();
+  return request("/admin/promo-codes/assign", {
+    method: "POST",
+    token,
+    publicIp,
+    body: { promo_code: promoCode, email },
+  });
+}
+
 export function getSubscriptionPlans(token) {
   return request("/admin/subscription/plans", { token });
 }

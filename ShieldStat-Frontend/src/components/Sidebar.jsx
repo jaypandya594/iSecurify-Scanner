@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import logo from "../assets/logo.svg";
+import logoWhite from "../assets/iSecurify Logo - White - Transparent.png";
 import ResetPasswordModal from "./ResetPasswordModal";
 import { getProfile } from "../services/api";
 import { logoutAndRedirect } from "../utils/auth";
@@ -79,8 +80,8 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
   const isActive = (path) => location.pathname === path;
 
   const handleSettingsClick = () => {
-  if (!isOpen) onToggle();
-  setIsSettingsOpen(true);
+    if (!isOpen) onToggle();
+    setIsSettingsOpen(true);
   };
 
   const handleLogout = () => {
@@ -99,11 +100,10 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-40 flex h-full shrink-0 flex-col border-r border-slate-200 bg-slate-50 shadow-2xl transition-all duration-300 dark:border-slate-800 dark:bg-slate-900 lg:static lg:translate-x-0 lg:shadow-none ${
-        isOpen
+      className={`fixed inset-y-0 left-0 z-40 flex h-full shrink-0 flex-col border-r border-slate-200 bg-slate-50 shadow-2xl transition-all duration-300 dark:border-slate-800 dark:bg-slate-900 lg:static lg:translate-x-0 lg:shadow-none ${isOpen
           ? "translate-x-0 w-72 overflow-visible px-6 py-8 pr-8"
           : "-translate-x-full w-72 overflow-hidden px-6 py-8 pr-8 lg:w-16 lg:translate-x-0 lg:overflow-hidden lg:px-3 lg:py-6"
-      }`}
+        }`}
       aria-hidden={!isOpen}
       inert={!isOpen ? "" : undefined}
     >
@@ -121,18 +121,18 @@ function Sidebar({ isOpen, onToggle, onClose, isDarkMode, onToggleDarkMode }) {
       </button>
 
       <div
-        className={`flex h-full min-h-0 flex-col overflow-y-auto ${
-          isOpen
+        className={`flex h-full min-h-0 flex-col overflow-y-auto ${isOpen
             ? "opacity-100"
             : "pointer-events-none opacity-0 lg:pointer-events-auto lg:opacity-100"
-        }`}
+          }`}
       >
         {/* Logo */}
         <div className="mb-10">
           <img
-            src={logo}
+            src={isDarkMode ? logoWhite : logo}
             alt="isecurify"
-            className="h-10 w-auto object-contain dark:invert dark:brightness-200"
+            className="max-h-10 w-auto object-contain"
+            style={isDarkMode ? { height: "3.4rem" } : undefined}
           />
         </div>
 

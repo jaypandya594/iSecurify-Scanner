@@ -24,6 +24,11 @@ class GeneratePromoCodeRequest(BaseModel):
     expires_at: datetime
 
 
+class AssignPromoCodeRequest(BaseModel):
+    promo_code: str
+    email: EmailStr
+
+
 class SubscriptionPlanCreate(BaseModel):
     plan_id: str | None = None
     name: str

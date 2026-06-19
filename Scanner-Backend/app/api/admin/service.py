@@ -307,6 +307,78 @@ def delete_expired_unclaimed_promo_codes(db: Session) -> dict:
     }
 
 
+def assign_promo_code_to_user(
+    promo_code: str,
+    email: str,
+    db: Session,
+    current_admin: User | None = None,
+    ip_address: str | None = None,
+    public_ip: str | None = None,
+) -> dict:
+    """Directly assign a promo code to a user, applying the benefit immediately."""
+
+    # Validate promo code exists
+    promo = db.query(PromoCode).filter(PromoCode.code == promo_code).first()
+    if not promo:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+
+    # Check if promo is already used
+    if promo.is_used:
+        raise HTTPException(status_code=400, detail="Promo code has already been assigned to another user")
+
+    # Find the user by email
+    user = db.query(User).filter(User.email == _normalize_email(email)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # User must belong to an organization
+    if not user.org_id:
+        raise HTTPException(status_code=400, detail="User is not associated with an organization")
+
+    # Get the organization
+    org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # Assign the promo code with current timestamp
+    now_utc = datetime.now(timezone.utc)
+    promo.is_used = True
+    promo.used_at = now_utc
+    promo.used_by = user.user_id
+    promo.expires_at = None  # No expiry for direct assignments
+
+    # Apply the benefit: increment max_domains
+    org.max_domains += 1
+
+    db.commit()
+
+    # Record audit log
+    if current_admin:
+        _record_audit_log(
+            db,
+            admin=current_admin,
+            action="PROMO_CODE_ASSIGNED",
+            target_type="promo_code",
+            target_id=promo.code,
+            details={
+                "code": promo.code,
+                "assigned_to_user": user.email,
+                "assigned_to_org": org.org_id,
+                "max_domains_after": org.max_domains,
+                "assigned_at": now_utc.isoformat(),
+            },
+            ip_address=ip_address,
+            public_ip=public_ip,
+        )
+
+    return {
+        "message": f"Promo code assigned successfully to {user.email}",
+        "code": promo.code,
+        "assigned_to": user.email,
+        "max_domains": org.max_domains,
+    }
+
+
 def get_users_by_org(db: Session) -> dict:
     organizations = db.query(Organization).order_by(Organization.domain.asc()).all()
     users = (
@@ -871,6 +943,7 @@ def delete_subscription_plan(plan_id: str, db: Session) -> dict:
     db.commit()
 
     return {"message": "Subscription plan deleted successfully", "plan_id": plan_id}
+<<<<<<< Updated upstream
 
 
 def delete_user(user_id: str, admin_password: str, current_admin: User, db: Session, ip_address: str | None = None, public_ip: str | None = None) -> dict:
@@ -954,3 +1027,5 @@ def delete_user(user_id: str, admin_password: str, current_admin: User, db: Sess
         "deleted_at": datetime.now(timezone.utc).isoformat(),
         "organizations_deleted": len(owned_orgs),
     }
+=======
+>>>>>>> Stashed changes

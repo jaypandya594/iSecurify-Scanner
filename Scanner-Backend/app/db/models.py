@@ -90,7 +90,7 @@ class PromoCode(Base):
     is_used = Column(Boolean, default=False, nullable=False)
     used_at = Column(TIMESTAMP, nullable=True)
     used_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    expires_at = Column(TIMESTAMP, nullable=False)
+    expires_at = Column(TIMESTAMP, nullable=True)
     privilege_revoked = Column(Boolean, default=False, nullable=False)
 
 
