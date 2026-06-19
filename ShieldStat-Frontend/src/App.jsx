@@ -14,9 +14,9 @@ const ScanDashboard = lazy(() => import("./pages/ScanDashboard"));
 const ScanDetails = lazy(() => import("./pages/ScanDetails"));
 const ScanHistory = lazy(() => import("./pages/ScanHistory"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
-const AdminSubscription = lazy(() => import("./pages/AdminSubscription"));
 const AdminAudit = lazy(() => import("./pages/AdminAudit"));
-const AdminReports = lazy(() => import("./pages/AdminReports"));
+const PersonalInvitations = lazy(() => import("./pages/PersonalInvitations"));
+const AdminSubscription = lazy(() => import("./pages/AdminSubscription"));
 const Assessment = lazy(() => import("./pages/Assessment"));
 const MalwareScanHistory = lazy(() => import("./pages/MalwareScanHistory"));
 const MalwareDashboard = lazy(() => import("./pages/MalwareDashboard"));
@@ -52,57 +52,57 @@ function App() {
       }
     >
       <Routes>
-        <Route
-          path="/"
-          element={
-            <PublicLayout
-              isDarkMode={isDarkMode}
-              onToggleDarkMode={() => setIsDarkMode((current) => !current)}
-            />
-          }
-        >
-          <Route index element={<Landing />} />
-          <Route path="auth" element={<Auth />} />
-          <Route path="auth/verify-email" element={<VerifyEmail />} />
-        </Route>
+      <Route
+        path="/"
+        element={
+          <PublicLayout
+            isDarkMode={isDarkMode}
+            onToggleDarkMode={() => setIsDarkMode((current) => !current)}
+          />
+        }
+      >
+        <Route index element={<Landing />} />
+        <Route path="auth" element={<Auth />} />
+        <Route path="auth/verify-email" element={<VerifyEmail />} />
+      </Route>
 
-        <Route
-          path="/"
-          element={
-            <DashboardLayout
-              isDarkMode={isDarkMode}
-              onToggleDarkMode={() => setIsDarkMode((current) => !current)}
-            />
-          }
-        >
-          <Route path="scan-dashboard" element={<ScanDashboard />} />
-          <Route path="scan-details" element={<ScanDetails />} />
-          <Route path="scan" element={<Scan />} />
-          <Route path="history" element={<ScanHistory />} />
-          <Route path="malware" element={<MalwareScan />} />
-          <Route path="malware-history" element={<MalwareScanHistory />} />
-          <Route path="malware-dashboard" element={<MalwareDashboard />} />
-          <Route path="assessment" element={<Assessment />} />
-          <Route path="assessment/:sectionId" element={<Assessment />} />
-          <Route path="profile" element={<Profile />} />
-        </Route>
+      <Route
+        path="/"
+        element={
+          <DashboardLayout
+            isDarkMode={isDarkMode}
+            onToggleDarkMode={() => setIsDarkMode((current) => !current)}
+          />
+        }
+      >
+        <Route path="scan-dashboard" element={<ScanDashboard />} />
+        <Route path="scan-details" element={<ScanDetails />} />
+        <Route path="scan" element={<Scan />} />
+        <Route path="history" element={<ScanHistory />} />
+        <Route path="malware" element={<MalwareScan />} />
+        <Route path="malware-history" element={<MalwareScanHistory />} />
+        <Route path="malware-dashboard" element={<MalwareDashboard />} />
+        <Route path="assessment" element={<Assessment />} />
+        <Route path="assessment/:sectionId" element={<Assessment />} />
+        <Route path="profile" element={<Profile />} />
+      </Route>
 
-        {/* Admin area */}
-        <Route
-          path="/admin"
-          element={
-            <AdminLayout
-              isDarkMode={isDarkMode}
-              onToggleDarkMode={() => setIsDarkMode((current) => !current)}
-            />
-          }
-        >
-          <Route index element={<AdminUsers />} />
-          <Route path="subscription" element={<AdminSubscription />} />
-          <Route path="audit" element={<AdminAudit />} />
-          <Route path="reports" element={<AdminReports />} />
-          <Route path="profile" element={<Profile />} />
-        </Route>
+      {/* Admin area uses its own layout */}
+      <Route
+        path="/admin"
+        element={
+          <AdminLayout
+            isDarkMode={isDarkMode}
+            onToggleDarkMode={() => setIsDarkMode((current) => !current)}
+          />
+        }
+      >
+        <Route index element={<AdminUsers />} />
+        <Route path="personal-invitations" element={<PersonalInvitations />} />
+        <Route path="subscription" element={<AdminSubscription />} />
+        <Route path="audit" element={<AdminAudit />} />
+        <Route path="profile" element={<Profile />} />
+      </Route>
       </Routes>
     </Suspense>
   );

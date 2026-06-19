@@ -1,10 +1,12 @@
 import bcrypt
+import json
 import uuid
 import secrets
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 import os
 from fastapi import HTTPException
+from redis import Redis
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.db.models import (
@@ -15,6 +17,7 @@ from app.db.models import (
     PasswordResetOTP,
     Blacklist,
     SecurityAlert,
+    PersonalEmailInvitation,
 )
 from app.utils.email import (
     send_invite_email,
@@ -23,12 +26,25 @@ from app.utils.email import (
 )
 import logging
 
+from app.utils.totp import generate_totp_secret, get_totp_uri, verify_totp_code
+
 logger = logging.getLogger(__name__)
+redis_client = Redis(
+    host=os.getenv("REDIS_HOST", "redis"),
+    port=int(os.getenv("REDIS_PORT", "6379")),
+    decode_responses=True,
+)
 
 JWT_SECRET = os.getenv('JWT_SECRET')
 OTP_EXPIRY_MINUTES = 10
+LOGIN_OTP_EXPIRY_SECONDS = 120
+LOGIN_OTP_RESEND_WINDOW_SECONDS = 1200
+LOGIN_OTP_RESEND_LIMIT = 5
+LOGIN_OTP_COOLDOWN_SECONDS = 600
 VERIFICATION_EXPIRY_HOURS = 48
 FAILED_LOGIN_ATTEMPTS = 5
+ADMIN_LOGIN_OTP_BYPASS = os.getenv("ADMIN_LOGIN_OTP_BYPASS", "false").strip().lower() in {"1", "true", "yes", "on"}
+DOMAIN_EMAIL_VALIDATION_ENABLED = os.getenv("DOMAIN_EMAIL_VALIDATION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 FAILED_LOGIN_WINDOW_MINUTES = 10
 LOCKOUT_DURATION_MINUTES = 30
 PUBLIC_EMAIL_DOMAINS = {
@@ -37,12 +53,39 @@ PUBLIC_EMAIL_DOMAINS = {
     "gmx.com", "yandex.com", "inbox.com", "me.com", "msn.com",
 }
 
+# Reads ADMIN_TOTP_REQUIRED from .env once at startup.
+# ADMIN_TOTP_REQUIRED=false  → admins skip TOTP and get a JWT straight away
+# ADMIN_TOTP_REQUIRED=true   → admins must use TOTP like everyone else (default)
+ADMIN_TOTP_REQUIRED: bool = os.getenv("ADMIN_TOTP_REQUIRED", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_datetime_to_utc(timestamp: datetime | None) -> datetime | None:
+    """Convert timezone-naive or aware datetime to UTC-aware datetime."""
+    if not timestamp:
+        return None
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
+
+
 def hashPassword(password: str) -> str:
     salt = bcrypt.gensalt(10)
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
 def verifyPassword(entered_password: str, stored_hash: str) -> bool:
     return bcrypt.checkpw(entered_password.encode('utf-8'), stored_hash.encode('utf-8'))
+
+def _login_otp_key(email: str) -> str:
+    return f"login_otp:{email.lower().strip()}"
+
+
+def _login_resend_key(email: str) -> str:
+    return f"login_otp_resends:{email.lower().strip()}"
+
+
+def _login_cooldown_key(email: str) -> str:
+    return f"login_otp_cooldown:{email.lower().strip()}"
+
 
 def generateToken(user_id: str, org_id: str = None, role: str = "owner"):
     payload = {
@@ -120,11 +163,32 @@ def _finalize_owner_registration(user: User, domain: str, db: Session) -> None:
     user.pending_registration_domain = None
 
 
-def register(email: str, password: str, domain: str, db: Session):
-    """
-    ✅ FIXED: Save user to database FIRST, then send email
-    If email fails, user is still saved (can resend later)
-    """
+def _personal_email_invitation_is_valid(email_lower: str, invite_token: str | None, db: Session) -> bool:
+    if not invite_token:
+        return False
+
+    now_utc = datetime.now(timezone.utc)
+    invitation = (
+        db.query(PersonalEmailInvitation)
+        .filter(PersonalEmailInvitation.email == email_lower)
+        .filter(PersonalEmailInvitation.token == invite_token)
+        .filter(PersonalEmailInvitation.status.in_(["pending", "accepted"]))
+        .first()
+    )
+    
+    if not invitation:
+        return False
+    
+    # If expires_at is None, treat it as valid (for backward compatibility with old invitations)
+    if invitation.expires_at is None:
+        return True
+    
+    # Check if invitation hasn't expired
+    expires_at_utc = _normalize_datetime_to_utc(invitation.expires_at)
+    return expires_at_utc > now_utc if expires_at_utc else True
+
+
+def register(email: str, password: str, domain: str, db: Session, invite_token: str | None = None):
     email_lower = email.lower().strip()
     existing_user = db.query(User).filter(User.email == email_lower).first()
     if existing_user and existing_user.email_verified:
@@ -134,31 +198,30 @@ def register(email: str, password: str, domain: str, db: Session):
     if not domain:
         raise HTTPException(status_code=400, detail="Domain is required")
 
-    if _is_public_email_domain(email_lower):
-        raise HTTPException(
-            status_code=400,
-            detail="Please use your organization email address for signup. Personal email providers are not allowed.",
-        )
+    is_invited_personal_signup = _personal_email_invitation_is_valid(email_lower, invite_token, db)
 
-    if not _email_domain_matches_org(email_lower, domain):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Email domain must match your organization domain '{domain}'.",
-        )
+    # Domain validation only applies to regular signups, NOT invited users
+    # Invited users join existing organizations and can use any email address
+    if DOMAIN_EMAIL_VALIDATION_ENABLED and not is_invited_personal_signup:
+        # Public email domains are rejected for regular signups (without invitation)
+        if _is_public_email_domain(email_lower):
+            raise HTTPException(
+                status_code=400,
+                detail="Please use your organization email address for signup. Personal email providers are not allowed without an approved invitation token.",
+            )
 
-    if _email_domain_has_owner(email_lower, db):
-        email_domain = email_lower.split("@")[-1]
-        raise HTTPException(
-            status_code=400,
-            detail=f"An account for '@{email_domain}' already exists. Cannot create a new account, you need to be invited by the owner.",
-        )
+        # Email domain must match the organization domain they're signing up under
+        if not _email_domain_matches_org(email_lower, domain):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Email domain must match your organization domain '{domain}'.",
+            )
 
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=VERIFICATION_EXPIRY_HOURS)
     hashed_password = hashPassword(password)
 
     try:
-        # ✅ STEP 1: Create user in database FIRST
         if existing_user:
             existing_user.password = hashed_password
             existing_user.pending_registration_domain = domain
@@ -177,28 +240,19 @@ def register(email: str, password: str, domain: str, db: Session):
                 pending_registration_domain=domain,
             )
             db.add(new_user)
-        
-        # ✅ Commit user to database (SUCCESS!)
+
         db.commit()
         logger.info(f"User registered: {email_lower}")
-        
+
     except Exception as db_err:
         db.rollback()
         logger.error(f"Database error during registration: {str(db_err)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to create account"
-        )
+        raise HTTPException(status_code=500, detail="Failed to create account")
 
-    # ✅ STEP 2: Send verification email AFTER user is saved
-    # If this fails, user is already in database ✅
     frontend = os.getenv("FRONTEND_URL")
     if not frontend:
         logger.error("FRONTEND_URL not set")
-        raise HTTPException(
-            status_code=500,
-            detail="Server misconfiguration: FRONTEND_URL is not set",
-        )
+        raise HTTPException(status_code=500, detail="Server misconfiguration: FRONTEND_URL is not set")
 
     verify_url = f"{frontend.rstrip('/')}/auth/verify-email?token={token}"
 
@@ -206,9 +260,7 @@ def register(email: str, password: str, domain: str, db: Session):
         send_registration_verification_email(to_email=email_lower, verify_url=verify_url)
         logger.info(f"Verification email sent to: {email_lower}")
     except Exception as email_err:
-        # ✅ Log the error but DON'T rollback - user is already saved!
         logger.warning(f"Failed to send verification email to {email_lower}: {str(email_err)}")
-        # Return success anyway - user can request resend later
         return {
             "message": "Account created! Check your email for verification link. (If you don't see it, check spam folder)",
             "email": email_lower,
@@ -239,27 +291,16 @@ def verify_registration(token: str, db: Session):
         raise HTTPException(status_code=400, detail="Invalid or expired verification link")
 
     now_utc = datetime.now(timezone.utc)
-    expires_at = user.verification_expires_at
-    if not expires_at:
+    expires_at_utc = _normalize_datetime_to_utc(user.verification_expires_at)
+    
+    if not expires_at_utc:
         raise HTTPException(status_code=400, detail="Invalid or expired verification link")
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-    if expires_at < now_utc:
+    if expires_at_utc < now_utc:
         db.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail="Verification link has expired. Please register again.",
-        )
+        raise HTTPException(status_code=400, detail="Verification link has expired. Please register again.")
 
     email_lower = user.email.lower().strip()
-
-    if _email_domain_has_owner(email_lower, db):
-        email_domain = email_lower.split("@")[-1]
-        raise HTTPException(
-            status_code=400,
-            detail=f"An account for '@{email_domain}' already exists. You can no longer use this verification link.",
-        )
 
     domain = (user.pending_registration_domain or "").strip().lower()
     if not domain:
@@ -267,6 +308,17 @@ def verify_registration(token: str, db: Session):
 
     try:
         _finalize_owner_registration(user, domain, db)
+        
+        # Mark the personal email invitation as accepted if one exists
+        invitation = (
+            db.query(PersonalEmailInvitation)
+            .filter(PersonalEmailInvitation.email == email_lower)
+            .first()
+        )
+        if invitation:
+            invitation.status = "accepted"
+            db.add(invitation)
+        
         db.commit()
         logger.info(f"User verified: {email_lower}")
     except Exception as err:
@@ -276,8 +328,11 @@ def verify_registration(token: str, db: Session):
 
     return {"message": "Your email is verified. You can now log in."}
 
+
 def login_user(email: str, password: str, db: Session):
     email_lower = email.lower().strip()
+
+    # ── your existing checks — NOT changed ───────────────────────────────────
     blocked_user = db.query(Blacklist).filter(Blacklist.email == email_lower).first()
     if blocked_user:
         raise HTTPException(status_code=403, detail="This user has been blocked by an admin")
@@ -347,14 +402,76 @@ def login_user(email: str, password: str, db: Session):
     user.locked_until = None
     db.commit()
 
+    if user.role == "admin" and not ADMIN_TOTP_REQUIRED:
+        access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
+        return {
+            "token": access_token,
+            "user": {
+                "role": user.role,
+                "user_id": user.user_id,
+                "org_id": user.org_id,
+                "email": user.email,
+            },
+        }
+
+    if not user.is_totp_enabled:
+        return {
+            "requires_totp_setup": True,
+            "message": "Complete your Google Authenticator setup to sign in.",
+        }
+
+    return {
+        "requires_totp_verify": True,
+        "message": "Enter your 6-digit Google Authenticator code",
+    }
+
+
+def setup_user_totp(email: str, password: str, db: Session) -> dict:
+    email_lower = email.lower().strip()
+    user = db.query(User).filter(User.email == email_lower).first()
+
+    if not user or not verifyPassword(password, user.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if user.totp_secret and not user.is_totp_enabled:
+        secret = user.totp_secret
+    else:
+        secret = generate_totp_secret()
+        user.totp_secret = secret
+
+    db.commit()
+
+    uri = get_totp_uri(secret=secret, email=user.email)
+    return {
+        "otpauth_uri": uri,
+        "secret": secret,
+    }
+
+
+def verify_user_totp(email: str, password: str, totp_code: str, db: Session) -> dict:
+    email_lower = email.lower().strip()
+    user = db.query(User).filter(User.email == email_lower).first()
+
+    if not user or not verifyPassword(password, user.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not user.totp_secret:
+        raise HTTPException(
+            status_code=400,
+            detail="TOTP not set up. Please call /auth/totp/setup first.",
+        )
+
+    if not verify_totp_code(secret=user.totp_secret, code=totp_code):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authenticator code. Please try again.",
+        )
+
+    if not user.is_totp_enabled:
+        user.is_totp_enabled = True
+        db.commit()
+
     access_token = generateToken(user.user_id, org_id=user.org_id, role=user.role)
-    org = (
-        db.query(Organization).filter(Organization.org_id == user.org_id).first()
-        if user.org_id
-        else None
-    )
-    org_domains = list(org.domain) if org and org.domain else []
-    primary_domain = org_domains[0] if org_domains else ""
     return {
         "token": access_token,
         "user": {
@@ -364,6 +481,42 @@ def login_user(email: str, password: str, db: Session):
             "email": user.email,
         },
     }
+
+
+def reset_user_totp(email: str, otp: str, db: Session) -> dict:
+    email_lower = email.lower().strip()
+    user = db.query(User).filter(User.email == email_lower).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    otp_record = db.query(PasswordResetOTP).filter(
+        PasswordResetOTP.user_id == user.user_id
+    ).first()
+
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    now_utc = datetime.now(timezone.utc)
+    expires_at_utc = _normalize_datetime_to_utc(otp_record.expires_at)
+
+    if not expires_at_utc or expires_at_utc < now_utc:
+        db.delete(otp_record)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    if not verifyPassword(otp.strip(), otp_record.otp_hash):
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    user.totp_secret = None
+    user.is_totp_enabled = False
+    db.delete(otp_record)
+    db.commit()
+
+    return {
+        "message": "Your authenticator app has been reset. Please log in and set up Google Authenticator again.",
+    }
+
 
 def send_forgot_password_otp(email: str, db: Session):
     email_lower = email.lower()
@@ -414,11 +567,9 @@ def verify_otp_and_reset_password(email: str, otp: str, new_password: str, db: S
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
     now_utc = datetime.now(timezone.utc)
-    expires_at = otp_record.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    expires_at_utc = _normalize_datetime_to_utc(otp_record.expires_at)
 
-    if expires_at < now_utc:
+    if not expires_at_utc or expires_at_utc < now_utc:
         db.delete(otp_record)
         db.commit()
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
@@ -499,6 +650,30 @@ def invite_member(owner: User, invite_email: str, db: Session):
         "sent": email_lower
     }
 
+def delete_member(owner: User, member_id: str, db: Session):
+    if not member_id or not str(member_id).strip():
+        raise HTTPException(status_code=400, detail="Member ID is required")
+
+    member = db.query(User).filter(User.user_id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    if member.org_id != owner.org_id:
+        raise HTTPException(status_code=403, detail="You can only delete members from your organization")
+
+    if member.user_id == owner.user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account from this organization")
+
+    db.delete(member)
+    db.commit()
+
+    return {
+        "message": "Member deleted successfully",
+        "deleted_user_id": member.user_id,
+        "email": member.email,
+    }
+
+
 def get_members(owner: User, db: Session):
     members = db.query(User).filter(
         User.org_id == owner.org_id,
@@ -516,29 +691,79 @@ def get_members(owner: User, db: Session):
         for m in members
     ]
 
+def _revoke_expired_promo_privileges(db: Session, org_id: str | None = None) -> None:
+    """Check for expired promos and revoke domain privileges."""
+    now_utc = datetime.now(timezone.utc)
+
+    # Query for redeemed promos that have privilege not yet revoked
+    query = db.query(PromoCode).filter(
+        PromoCode.is_used == True,
+        PromoCode.used_by != None,
+        PromoCode.privilege_revoked == False,
+    )
+
+    # If org_id is provided, only check promos for that org
+    if org_id:
+        user_ids = [u.user_id for u in db.query(User).filter(User.org_id == org_id).all()]
+        query = query.filter(PromoCode.used_by.in_(user_ids)) if user_ids else query.filter(False)
+
+    all_promos = query.all()
+    
+    # Filter for expired promos in Python to handle timezone-aware/naive comparison
+    expired_promos = [
+        promo for promo in all_promos
+        if promo.expires_at and _normalize_datetime_to_utc(promo.expires_at) < now_utc
+    ]
+
+    for promo in expired_promos:
+        user = db.query(User).filter(User.user_id == promo.used_by).first()
+        if not user or not user.org_id:
+            # If user not found, just mark as revoked
+            promo.privilege_revoked = True
+            continue
+
+        org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+        if org:
+            # Revoke the extra domain privilege, keeping minimum of 1
+            org.max_domains = max(1, org.max_domains - 1)
+
+        promo.privilege_revoked = True
+
+    if expired_promos:
+        db.commit()
+
 def redeem_promo_code(user_id: str, code: str, db: Session):
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user or not user.org_id:
         raise HTTPException(status_code=400, detail="User not associated with an organization")
 
     promo = db.query(PromoCode).filter(PromoCode.code == code).first()
-    
+
     if not promo:
         raise HTTPException(status_code=404, detail="Promo code not found")
-        
+
     if promo.is_used:
         raise HTTPException(status_code=400, detail="Promo code already used")
-        
+
+    now_utc = datetime.now(timezone.utc)
+    if promo.expires_at and promo.expires_at.tzinfo is None:
+        promo_expiry = promo.expires_at.replace(tzinfo=timezone.utc)
+    else:
+        promo_expiry = promo.expires_at
+
+    if promo_expiry < now_utc:
+        raise HTTPException(status_code=400, detail="Promo code has expired")
+
     org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
     promo.is_used = True
-    promo.used_at = datetime.now(timezone.utc)
+    promo.used_at = now_utc
     promo.used_by = user_id
-    
+
     org.max_domains += 1
-    
+
     db.commit()
     return {
         "message": "Promo code redeemed successfully",
@@ -553,6 +778,12 @@ def add_domain(user_id: str, domain: str, db: Session):
     org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+
+    # Check and revoke any expired promo privileges
+    _revoke_expired_promo_privileges(db, org.org_id)
+
+    # Refresh org after revocation check
+    db.refresh(org)
 
     domain = domain.strip().lower()
     if not domain:

@@ -1,4 +1,4 @@
-version: "3.8"
+
 
 services:
   postgres:
@@ -46,6 +46,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - RECAPTCHA_SECRET_KEY=${RECAPTCHA_SECRET_KEY}
       - RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED}
+      - DOMAIN_EMAIL_VALIDATION_ENABLED=${DOMAIN_EMAIL_VALIDATION_ENABLED}
     volumes:
       - .:/app
     depends_on:

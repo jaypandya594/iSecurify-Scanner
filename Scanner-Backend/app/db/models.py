@@ -17,19 +17,28 @@ class Organization(Base):
 class User(Base):
     __tablename__ = "users"
 
-    user_id = Column(String(36), primary_key=True)
-    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=True)
-    email = Column(String(255), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False, default="owner")
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    email_verified = Column(Boolean, nullable=False, server_default="true")
-    failed_login_attempts = Column(Integer, nullable=False, default=0)
-    last_failed_login_at = Column(TIMESTAMP, nullable=True)
-    locked_until = Column(TIMESTAMP, nullable=True)
-    verification_token = Column(String(255), unique=True, nullable=True)
-    verification_expires_at = Column(TIMESTAMP, nullable=True)
+    user_id                   = Column(String(36), primary_key=True)
+    org_id                    = Column(String(36), ForeignKey("organizations.org_id"), nullable=True)
+    email                     = Column(String(255), unique=True, nullable=False)
+    password                  = Column(String(255), nullable=False)
+    role                      = Column(String(20), nullable=False, default="owner")
+    created_at                = Column(TIMESTAMP, server_default=func.now())
+    email_verified            = Column(Boolean, nullable=False, server_default="true")
+    failed_login_attempts     = Column(Integer, nullable=False, default=0)
+    last_failed_login_at      = Column(TIMESTAMP, nullable=True)
+    locked_until              = Column(TIMESTAMP, nullable=True)
+    verification_token        = Column(String(255), unique=True, nullable=True)
+    verification_expires_at   = Column(TIMESTAMP, nullable=True)
     pending_registration_domain = Column(Text, nullable=True)
+
+    # ── NEW: TOTP columns ─────────────────────────────────────────────────────
+    totp_secret     = Column(String(64), nullable=True)
+    # NULL  → user has never set up Google Authenticator
+    # value → the Base32 secret tied to their Authenticator app entry
+
+    is_totp_enabled = Column(Boolean, nullable=False, server_default="false")
+    # False → setup not yet confirmed (secret might exist but not verified)
+    # True  → user successfully verified a code at least once; TOTP is active
 
 class Invitation(Base):
     __tablename__ = "invitations"
@@ -41,6 +50,21 @@ class Invitation(Base):
     status = Column(String(20), nullable=False, default="pending")
     invited_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
     expires_at = Column(TIMESTAMP, nullable=False)
+
+
+class PersonalEmailInvitation(Base):
+    __tablename__ = "personal_email_invitations"
+
+    invitation_id = Column(String(36), primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    token = Column(String(255), unique=True, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    approved_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+    approved_at = Column(TIMESTAMP, nullable=True)
+    expires_at = Column(TIMESTAMP, nullable=True)
+    notes = Column(Text, nullable=True)
+
 
 class PasswordResetOTP(Base):
     __tablename__ = "password_reset_otps"
@@ -58,6 +82,8 @@ class PromoCode(Base):
     is_used = Column(Boolean, default=False, nullable=False)
     used_at = Column(TIMESTAMP, nullable=True)
     used_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    expires_at = Column(TIMESTAMP, nullable=False)
+    privilege_revoked = Column(Boolean, default=False, nullable=False)
 
 
 class SubscriptionPlan(Base):
@@ -123,7 +149,6 @@ class UserAssessment(Base):
     physical_security = Column(JSONB, nullable=True)
 
 
-
 class ScanSummary(Base):
     __tablename__ = "scan_summary"
 
@@ -155,7 +180,6 @@ class ScanScoreHistory(Base):
 
 
 class MalwareScanResult(Base):
-
     __tablename__ = "malware_scan_results"
 
     scan_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -182,62 +206,19 @@ class PortFixRequest(Base):
     __tablename__ = "port_fix_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-
     scan_id = Column(String(255), nullable=False)
-
-    org_id = Column(
-        String(36),
-        ForeignKey("organizations.org_id"),
-        nullable=False
-    )
-
-    user_id = Column(
-        String(36),
-        ForeignKey("users.user_id"),
-        nullable=True
-    )
-
-    domain = Column(
-        Text,
-        ForeignKey("scan_summary.domain"),
-        nullable=False
-    )
-
+    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    domain = Column(Text, ForeignKey("scan_summary.domain"), nullable=False)
     host = Column(String(255), nullable=False)
-
     port_number = Column(Integer, nullable=False)
-
     service = Column(String(255), nullable=True)
-
-    fix_type = Column(
-        String(50),
-        nullable=False,
-        default="port"
-    )
-
-    status = Column(
-        String(50),
-        nullable=False,
-        default="pending"
-    )
-
+    fix_type = Column(String(50), nullable=False, default="port")
+    status = Column(String(50), nullable=False, default="pending")
     is_open = Column(Boolean, nullable=True)
-
-    created_at = Column(
-        TIMESTAMP,
-        server_default=func.now()
-    )
-
-    verification_scan_time = Column(
-        TIMESTAMP,
-        nullable=True
-    )
-
-    updated_at = Column(
-        TIMESTAMP,
-        server_default=func.now(),
-        onupdate=func.now()
-    )
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    verification_scan_time = Column(TIMESTAMP, nullable=True)
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_portfix_scan", "scan_id"),
@@ -245,6 +226,8 @@ class PortFixRequest(Base):
         Index("idx_portfix_domain", "domain"),
         Index("idx_portfix_status", "status"),
     )
+
+
 class FixStatus(str, enum.Enum):
     pending = "pending"
     running = "running"
@@ -252,50 +235,20 @@ class FixStatus(str, enum.Enum):
     failed = "failed"
 
 
- 
-    
 class HeaderFixRequest(Base):
     __tablename__ = "header_fix_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-
     scan_id = Column(String(255), nullable=False, unique=True)
-
-    org_id = Column(
-        String(36),
-        ForeignKey("organizations.org_id"),
-        nullable=False,
-    )
-
-    user_id = Column(
-        String(36),
-        ForeignKey("users.user_id"),
-        nullable=True,
-    )
-
-    domain = Column(
-        Text,
-        ForeignKey("scan_summary.domain"),
-        nullable=False,
-    )
-
-    # e.g. "missing_csp", "missing_hsts", "missing_x_frame", "missing_x_content"
+    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    domain = Column(Text, ForeignKey("scan_summary.domain"), nullable=False)
     fix_type = Column(String(50), nullable=False)
-
     status = Column(String(50), nullable=False, default="pending")
-
-    # True = header now present (fix confirmed), False = still missing
     header_present = Column(Boolean, nullable=True)
-
     created_at = Column(TIMESTAMP, server_default=func.now())
-
     verification_scan_time = Column(TIMESTAMP, nullable=True)
-
-    updated_at = Column(
-        TIMESTAMP,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_headerfix_scan", "scan_id"),
@@ -309,44 +262,16 @@ class TlsFixRequest(Base):
     __tablename__ = "tls_fix_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-
     scan_id = Column(String(255), nullable=False, unique=True)
-
-    org_id = Column(
-        String(36),
-        ForeignKey("organizations.org_id"),
-        nullable=False,
-    )
-
-    user_id = Column(
-        String(36),
-        ForeignKey("users.user_id"),
-        nullable=True,
-    )
-
-    domain = Column(
-        Text,
-        ForeignKey("scan_summary.domain"),
-        nullable=False,
-    )
-
-    # e.g. "expired_tls", "weak_tls", "tls_missing_443"
+    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    domain = Column(Text, ForeignKey("scan_summary.domain"), nullable=False)
     fix_type = Column(String(50), nullable=False)
-
     status = Column(String(50), nullable=False, default="pending")
-
-    # True = TLS issue resolved, False = still present
     tls_ok = Column(Boolean, nullable=True)
-
     created_at = Column(TIMESTAMP, server_default=func.now())
-
     verification_scan_time = Column(TIMESTAMP, nullable=True)
-
-    updated_at = Column(
-        TIMESTAMP,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_tlsfix_scan", "scan_id"),
@@ -354,6 +279,7 @@ class TlsFixRequest(Base):
         Index("idx_tlsfix_domain", "domain"),
         Index("idx_tlsfix_status", "status"),
     )
+
 
 class ResolvedFinding(Base):
     __tablename__ = "resolved_findings"
@@ -370,31 +296,4 @@ class ResolvedFinding(Base):
     __table_args__ = (
         Index("idx_resolved_org", "org_id"),
         Index("idx_resolved_domain", "domain"),
-
     )
-
-
-
-class ReportedIssue(Base):
-    __tablename__ = "reported_issues"
-
-    id = Column(Integer, primary_key=True, index=True)
-    org_id = Column(String(36), nullable=True)
-    domain = Column(Text, nullable=False)
-    subdomain = Column(String(255), nullable=True)
-    rule = Column(String(255), nullable=False)
-    severity = Column(String(50), nullable=True)
-    issue_type = Column(String(100), nullable=False)
-    message = Column(Text, nullable=True)
-    status = Column(String(50), nullable=False, default="open")   # open | reviewed | dismissed
-    ref_id = Column(String(20), nullable=False, unique=True)
-    reported_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
-    reviewed_at = Column(TIMESTAMP, nullable=True)
-    reviewed_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
-    admin_note = Column(Text, nullable=True)
-
-    __table_args__ = (
-        Index("idx_reported_issue_domain", "domain"),
-        Index("idx_reported_issue_status", "status"),
-    )
-

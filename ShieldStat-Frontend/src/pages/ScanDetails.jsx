@@ -1,10 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useSearchParams, Link } from "react-router-dom";
-import { getScore, getIpReputation, getProfile, submitFix, getFixStatus  } from "../services/api";
-import isecurifyLogo from "../assets/isecurify_logo.png";
-
-import React, { useEffect, useState } from "react";
-import { useLocation, useSearchParams, Link } from "react-router-dom";
 import {
   getScore,
   getIpReputation,
@@ -16,7 +11,6 @@ import {
   getFixRecommendation,
   saveResolvedFinding,
   getResolvedFindings,
-  reportIssue,
 } from "../services/api";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -216,24 +210,19 @@ function isUnexpectedOpenPortRule(rule) {
   return typeof rule === "string" && /^Unexpected open port(\s|$)/i.test(rule.trim());
 }
 
-// ─── Rule → fix_type mapping (drives both canGuideFix + API call) ─────────────
-//     Covers every fix_type in remediation.py
+// ─── Rule → fix_type mapping ──────────────────────────────────────────────────
 
 const RULE_TO_FIX_TYPE = {
-  // Application Security
   "Missing CSP header":              "missing_csp",
   "Missing HSTS header":             "missing_hsts",
   "Missing X-Frame-Options":         "missing_x_frame",
   "Missing X-Content-Type-Options":  "missing_x_content",
   "HTTP without HTTPS":              "http_without_https",
-  // TLS Security
   "443 open without TLS":            "tls_missing_443",
   "Expired TLS":                     "expired_tls",
   "Weak TLS version":                "weak_tls",
-  // Network Security (guide only — ports also get the queue flow)
   "Unexpected open port":            "unexpected_port",
   "Risky port exposed":              "risky_port",
-  // DNS / Email Security
   "Missing SPF record":              "missing_spf",
   "Weak SPF policy":                 "weak_spf",
   "Duplicate SPF record":            "duplicate_spf",
@@ -244,7 +233,6 @@ const RULE_TO_FIX_TYPE = {
 
 const TLS_FIX_TYPES = new Set(["tls_missing_443", "expired_tls", "weak_tls"]);
 
-// Derive fix_type from a rule string (exact then prefix match)
 function getFixType(rule) {
   if (!rule) return null;
   if (RULE_TO_FIX_TYPE[rule]) return RULE_TO_FIX_TYPE[rule];
@@ -254,15 +242,12 @@ function getFixType(rule) {
   return null;
 }
 
-// Categories where we show the guide Fix button
 const GUIDE_CATEGORIES = new Set([
   "Application Security",
   "TLS Security",
   "DNS Security",
   "Network Security",
 ]);
-
-// ─── Language label for syntax highlighting display ───────────────────────────
 
 const LANG_LABEL = {
   nginx:      "Nginx",
@@ -272,215 +257,19 @@ const LANG_LABEL = {
   dns:        "DNS",
 };
 
-// ─── Report Issue Modal ───────────────────────────────────────────────────────
-
-const ISSUE_TYPES = [
-  "Result is incorrect",
-  "Already fixed",
-  "False positive",
-  "Severity seems wrong",
-  "Other",
-];
-
-function ReportIssueModal({ rule, host, domain, onClose, onReported }) {
-  const [issueType, setIssueType] = useState(ISSUE_TYPES[0]);
-  const [message, setMessage]     = useState("");
-  const [status, setStatus]       = useState("idle");
-  const [refId, setRefId]         = useState("");
-
-  const subdomain = host?.subdomain || host;
-
-  const handleSubmit = async () => {
-    setStatus("loading");
-    try {
-      const token = localStorage.getItem("token");
-      const res = await reportIssue(
-        {
-          domain,
-          subdomain,
-          rule,
-          severity: host?.severity,
-          issueType,
-          message,
-        },
-        token,
-      );
-      setRefId(res?.ref_id || "REF-" + Math.random().toString(36).slice(2, 7).toUpperCase());
-      setStatus("success");
-      onReported?.();
-    } catch {
-      setStatus("idle");
-    }
-  };
-
-  const handleBackdrop = (e) => {
-    if (e.target === e.currentTarget) onClose();
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-[400] flex items-center justify-center bg-black/50 p-4"
-      onClick={handleBackdrop}
-    >
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden">
-
-        {/* Header */}
-        <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500">
-            <span
-              className="material-symbols-outlined text-[18px] text-white"
-              style={{ fontVariationSettings: `"FILL" 1` }}
-            >
-              flag
-            </span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-extrabold text-slate-900 leading-tight">
-              Report an issue
-            </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Sent directly to the admin team for review
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-            aria-label="Close"
-          >
-            <span className="material-symbols-outlined text-[18px] leading-none">close</span>
-          </button>
-        </div>
-
-        {status === "success" ? (
-          /* ── Success state ── */
-          <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-              <span
-                className="material-symbols-outlined text-[26px] text-emerald-600"
-                style={{ fontVariationSettings: `"FILL" 1` }}
-              >
-                check_circle
-              </span>
-            </div>
-            <div>
-              <p className="text-[15px] font-extrabold text-slate-900">Report sent!</p>
-              <p className="text-[13px] text-slate-500 mt-1 leading-relaxed">
-                The admin team will review{" "}
-                <strong className="text-slate-700">{rule}</strong> on{" "}
-                <strong className="text-slate-700">{subdomain}</strong> and follow up.
-              </p>
-            </div>
-            <span className="font-mono text-[12px] bg-slate-100 px-3 py-1.5 rounded-lg text-slate-500">
-              {refId}
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 rounded-lg bg-slate-100 text-slate-700 text-[13px] font-semibold hover:bg-slate-200 transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* ── Body ── */}
-            <div className="px-5 py-5 space-y-4">
-              {/* Context pill */}
-              <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                <span className="material-symbols-outlined text-[15px] text-amber-600">
-                  info
-                </span>
-                <span className="text-[12px] text-amber-800 truncate">
-                  <strong>{rule}</strong> · {subdomain}
-                </span>
-              </div>
-
-              {/* Issue type chips */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
-                  What's the issue?
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {ISSUE_TYPES.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setIssueType(t)}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all ${
-                        issueType === t
-                          ? "bg-indigo-600 text-white border-indigo-600"
-                          : "bg-white text-slate-600 border-slate-300 hover:border-indigo-300 hover:text-indigo-600"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Message */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
-                  Message{" "}
-                  <span className="normal-case font-normal">(optional)</span>
-                </p>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="e.g. We deployed this fix last week, scanner may not have picked it up yet..."
-                  className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none min-h-[80px]"
-                />
-              </div>
-            </div>
-
-            {/* ── Footer ── */}
-            <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
-              <span className="flex items-center gap-1 text-[11px] text-slate-400">
-                <span className="material-symbols-outlined text-[13px]">lock</span>
-                Only visible to admins
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-[13px] font-semibold hover:bg-slate-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={status === "loading"}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-[13px] font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-60 flex items-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-[14px]">send</span>
-                  {status === "loading" ? "Sending…" : "Send to admin"}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Fix Guide Modal ──────────────────────────────────────────────────────────
 
 function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
-  const [guide, setGuide]           = useState(null);   // fetched from /fix/recommendation
+  const [guide, setGuide]               = useState(null);
   const [guideLoading, setGuideLoading] = useState(true);
-  const [guideError, setGuideError] = useState(null);
-
-  const [copiedIdx, setCopiedIdx]   = useState(null);
-  const [verifying, setVerifying]   = useState(false);
+  const [guideError, setGuideError]     = useState(null);
+  const [copiedIdx, setCopiedIdx]       = useState(null);
+  const [verifying, setVerifying]       = useState(false);
   const [verifyResult, setVerifyResult] = useState(null);
 
   const fixType  = getFixType(rule);
   const subdomain = host?.subdomain || host;
 
-  // ── Fetch dynamic guide on mount ────────────────────────────────────────────
   useEffect(() => {
     if (!fixType) {
       setGuideError("No remediation guide available for this issue.");
@@ -488,7 +277,6 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
       return;
     }
 
-    // Collect technologies from host if available (scanner may include them)
     const technologies = host?.technologies ?? [];
     const tlsVersion   = host?.tls_version  ?? null;
 
@@ -501,7 +289,6 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
       .finally(() => setGuideLoading(false));
   }, [fixType]);
 
-  // ── I've Fixed It handler ────────────────────────────────────────────────────
   const handleVerify = async () => {
     setVerifying(true);
     setVerifyResult(null);
@@ -533,7 +320,6 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
 
   const isFixed = !!(verifyResult?.header_present || verifyResult?.tls_ok);
 
-  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
@@ -541,7 +327,7 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
     >
       <div className="relative w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="sticky top-0 z-10 flex items-start gap-3 border-b border-slate-200 bg-white px-5 py-4 rounded-t-2xl">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-600">
             <span
@@ -565,10 +351,8 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
           </button>
         </div>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <div className="px-5 py-5 space-y-5 flex-1">
-
-          {/* Loading state */}
           {guideLoading && (
             <div className="flex items-center justify-center gap-3 py-12 text-slate-500">
               <span className="material-symbols-outlined animate-spin text-indigo-500">
@@ -578,17 +362,14 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
             </div>
           )}
 
-          {/* Error state */}
           {!guideLoading && guideError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               {guideError}
             </div>
           )}
 
-          {/* Guide content */}
           {!guideLoading && guide && (
             <>
-              {/* Why this is risky */}
               <div className="rounded-lg border-l-4 border-red-500 bg-red-50 px-4 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-red-700 mb-1">
                   Why this is risky
@@ -596,7 +377,6 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
                 <p className="text-[13px] text-red-900 leading-relaxed">{guide.why_risky}</p>
               </div>
 
-              {/* Steps */}
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">
                   How to fix — step by step
@@ -616,7 +396,6 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
                         )}
                         {step.code && (
                           <div className="relative rounded-lg bg-slate-900 px-4 pt-3 pb-3">
-                            {/* Language badge */}
                             {step.language && (
                               <span className="absolute top-2 left-3 text-[9px] font-bold uppercase tracking-widest text-slate-500">
                                 {LANG_LABEL[step.language] ?? step.language}
@@ -643,7 +422,6 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
                 </div>
               </div>
 
-              {/* References */}
               {guide.references?.length > 0 && (
                 <div className="pt-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
@@ -669,7 +447,7 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
           )}
         </div>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="sticky bottom-0 border-t border-slate-200 bg-white px-5 py-3 rounded-b-2xl flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1 flex-1">
             {verifyResult && !verifyResult.error && (
@@ -692,7 +470,6 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
             )}
           </div>
           <div className="flex gap-2 shrink-0">
-            {/* Only show verify button for header/TLS fix types */}
             {fixType && (TLS_FIX_TYPES.has(fixType) || fixType.startsWith("missing_") || fixType === "http_without_https") && (
               <button
                 type="button"
@@ -720,13 +497,12 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
 
 // ─── Host row ─────────────────────────────────────────────────────────────────
 
-function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGuide, onOpenReport }) {
+function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGuide }) {
   const hostCfg = getSeverityConfig(host.severity);
   const [fixing, setFixing] = useState(false);
 
   const portNum = host.port != null && host.port !== "" ? Number(host.port) : NaN;
 
-  // Port fix: Network Security > Unexpected open port only
   const canPortFix = Boolean(
     categoryName === "Network Security" &&
       token &&
@@ -736,11 +512,10 @@ function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGui
       portNum > 0,
   );
 
-  // Guide fix: any category that has a fix_type mapping
-  const fixType   = getFixType(rule);
+  const fixType     = getFixType(rule);
   const canGuideFix = Boolean(
-  GUIDE_CATEGORIES.has(categoryName) && fixType && !canPortFix,
-);
+    GUIDE_CATEGORIES.has(categoryName) && fixType && !canPortFix,
+  );
 
   const handlePortFix = async (e) => {
     e.stopPropagation();
@@ -816,11 +591,6 @@ function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGui
     onOpenGuide?.({ rule, host });
   };
 
-  const handleReportClick = (e) => {
-    e.stopPropagation();
-    onOpenReport?.({ rule, host });
-  };
-
   return (
     <div
       className={`flex flex-col md:flex-row md:items-center gap-3 md:gap-6 px-4 py-3 rounded-lg border ${hostCfg.detailBorder} ${hostCfg.detailBg} text-sm w-full`}
@@ -842,17 +612,6 @@ function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGui
         </div>
       )}
       <div className="md:ml-auto flex items-center gap-2 flex-wrap justify-start md:justify-end w-full md:w-auto">
-        {/* Report Issue button — always visible */}
-        <button
-          type="button"
-          onClick={handleReportClick}
-          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tight bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm"
-          title="Report an issue with this finding"
-        >
-          <span className="material-symbols-outlined text-[14px]">flag</span>
-          Report
-        </button>
-
         {canPortFix && (
           <button
             type="button"
@@ -886,8 +645,7 @@ function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGui
 
 // ─── Vulnerability finding card ───────────────────────────────────────────────
 
-// ── FIX 1: Added onOpenReport to FindingCard props and passes it down to HostRow ──
-function FindingCard({ finding, token, orgId, categoryName, onFixToast, onOpenGuide, onOpenReport }) {
+function FindingCard({ finding, token, orgId, categoryName, onFixToast, onOpenGuide }) {
   const [expanded, setExpanded] = useState(false);
   const cfg = getSeverityConfig(finding.severity);
   const label = finding.severity.charAt(0).toUpperCase() + finding.severity.slice(1);
@@ -951,7 +709,6 @@ function FindingCard({ finding, token, orgId, categoryName, onFixToast, onOpenGu
                 categoryName={categoryName}
                 onFixToast={onFixToast}
                 onOpenGuide={onOpenGuide}
-                onOpenReport={onOpenReport}  // ── FIX 2: was missing here ──
               />
             ))}
         </div>
@@ -960,7 +717,8 @@ function FindingCard({ finding, token, orgId, categoryName, onFixToast, onOpenGu
   );
 }
 
-// ─── IP Reputation card ───────────────────────────────────────────────────────
+// ─── Resolved panel ───────────────────────────────────────────────────────────
+
 function ResolvedPanel({ domain, refresh }) {
   const [resolved, setResolved] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -1006,7 +764,6 @@ function ResolvedPanel({ domain, refresh }) {
           key={item.id}
           className="flex flex-col md:flex-row md:items-center gap-3 px-5 py-4 rounded-xl border border-emerald-200 bg-emerald-50"
         >
-          {/* Icon */}
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500">
             <span
               className="material-symbols-outlined text-[18px] text-white"
@@ -1015,8 +772,6 @@ function ResolvedPanel({ domain, refresh }) {
               check_circle
             </span>
           </div>
-
-          {/* Info */}
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-extrabold text-emerald-900 leading-tight">
               {item.rule}
@@ -1025,13 +780,9 @@ function ResolvedPanel({ domain, refresh }) {
               {item.subdomain}
             </p>
           </div>
-
-          {/* Category badge */}
           <span className="shrink-0 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tight bg-emerald-100 text-emerald-800 border border-emerald-200">
             {item.category}
           </span>
-
-          {/* Date */}
           <span className="shrink-0 text-[11px] text-emerald-600 font-semibold">
             {new Date(item.resolved_at).toLocaleDateString()}
           </span>
@@ -1040,6 +791,9 @@ function ResolvedPanel({ domain, refresh }) {
     </div>
   );
 }
+
+// ─── IP Reputation card ───────────────────────────────────────────────────────
+
 function IpReputationCard({ rep }) {
   const [expanded, setExpanded] = useState(false);
   const sev = getReputationSeverity(rep.abuseConfidenceScore);
@@ -1113,14 +867,14 @@ function IpReputationCard({ rep }) {
           </p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {[
-              { label: "IP Address",    value: rep.ip,                      icon: "router" },
+              { label: "IP Address",    value: rep.ip,                         icon: "router" },
               { label: "Abuse Score",   value: `${rep.abuseConfidenceScore}%`, icon: "crisis_alert" },
-              { label: "Total Reports", value: rep.totalReports,            icon: "flag" },
-              { label: "Country",       value: rep.countryCode || "—",      icon: "flag_circle" },
-              { label: "ISP",           value: rep.isp || "—",              icon: "business" },
-              { label: "Usage Type",    value: rep.usageType || "—",        icon: "category" },
-              { label: "Domain",        value: rep.domain || "—",           icon: "language" },
-              { label: "Public IP",     value: rep.isPublic ? "Yes" : "No", icon: "public" },
+              { label: "Total Reports", value: rep.totalReports,               icon: "flag" },
+              { label: "Country",       value: rep.countryCode || "—",         icon: "flag_circle" },
+              { label: "ISP",           value: rep.isp || "—",                 icon: "business" },
+              { label: "Usage Type",    value: rep.usageType || "—",           icon: "category" },
+              { label: "Domain",        value: rep.domain || "—",              icon: "language" },
+              { label: "Public IP",     value: rep.isPublic ? "Yes" : "No",    icon: "public" },
               {
                 label: "Last Reported",
                 value: rep.lastReportedAt
@@ -1153,7 +907,7 @@ function IpReputationCard({ rep }) {
   );
 }
 
-// ─── Category tab button ──────────────────────────────────────────────────────
+// ─── Category tab ─────────────────────────────────────────────────────────────
 
 function CategoryTab({ cat, isActive, onClick }) {
   const cfg = cat.isIpRep
@@ -1190,6 +944,8 @@ function CategoryTab({ cat, isActive, onClick }) {
   );
 }
 
+// ─── Domain tab ───────────────────────────────────────────────────────────────
+
 function DomainTab({ domain, isActive, onClick }) {
   return (
     <button
@@ -1217,25 +973,20 @@ function DomainTab({ domain, isActive, onClick }) {
 function ScanDetails() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  const [data, setData]                 = useState(null);
-  const [ipReps, setIpReps]             = useState([]);
+  const [data, setData]                   = useState(null);
+  const [ipReps, setIpReps]               = useState([]);
   const [ipRepsLoading, setIpRepsLoading] = useState(false);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState(null);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState(null);
   const [activeCatName, setActiveCatName] = useState(null);
-  const [knownDomains, setKnownDomains] = useState([]);
-  const [orgId, setOrgId]               = useState(null);
+  const [knownDomains, setKnownDomains]   = useState([]);
+  const [orgId, setOrgId]                 = useState(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
-  const [fixToast, setFixToast]         = useState(null);
+  const [fixToast, setFixToast]           = useState(null);
   const [resolvedRefresh, setResolvedRefresh] = useState(0);
   const [guideModal, setGuideModal]       = useState(null);
-  // ── FIX 3: Report modal state — was missing entirely ──
-  const [reportModal, setReportModal]     = useState(null);
 
-  // Fix guide modal state — now also carries orgId + domain
-  const [guideModal, setGuideModal]     = useState(null); // { rule, host, orgId, domain }
-
-  const domain         = normalizeDomain(searchParams.get("domain") || knownDomains[0] || "");
+  const domain          = normalizeDomain(searchParams.get("domain") || knownDomains[0] || "");
   const preloadedResult = location?.state?.preloadedResult || null;
 
   useEffect(() => {
@@ -1347,49 +1098,45 @@ function ScanDetails() {
     setSearchParams({ domain: normalizedDomain });
   };
 
-  // ── Score live-update from verify result ────────────────────────────────────
   const handleScoreUpdate = (newScore, newSeverity, fixedRule, fixedSubdomain) => {
-  // Save to resolved findings
-  const token = localStorage.getItem("token");
-  const fixType = getFixType(fixedRule);
-  const category = Object.keys(data?.categorized_vulnerabilities || {}).find(
-    (cat) => data.categorized_vulnerabilities[cat][fixedRule]
-  ) || "Unknown";
+    const token    = localStorage.getItem("token");
+    const fixType  = getFixType(fixedRule);
+    const category = Object.keys(data?.categorized_vulnerabilities || {}).find(
+      (cat) => data.categorized_vulnerabilities[cat][fixedRule],
+    ) || "Unknown";
 
-  saveResolvedFinding({
-  orgId,
-  domain: data?.host?.domain || domain,
-  rule: fixedRule,
-  subdomain: fixedSubdomain,
-  fixType,
-  category,
-}, token).catch(() => {});
+    saveResolvedFinding({
+      orgId,
+      domain: data?.host?.domain || domain,
+      rule: fixedRule,
+      subdomain: fixedSubdomain,
+      fixType,
+      category,
+    }, token).catch(() => {});
 
-  // Refresh resolved tab
-  setResolvedRefresh(v => v + 1);
+    setResolvedRefresh((v) => v + 1);
 
-  // Update local state
-  setData((prev) => {
-    if (!prev) return prev;
-    const updatedVulns = { ...prev.categorized_vulnerabilities };
-    for (const cat of Object.keys(updatedVulns)) {
-      if (updatedVulns[cat][fixedRule]) {
-        updatedVulns[cat][fixedRule] = updatedVulns[cat][fixedRule].filter(
-          (h) => h.subdomain !== fixedSubdomain
-        );
-        if (updatedVulns[cat][fixedRule].length === 0) {
-          delete updatedVulns[cat][fixedRule];
+    setData((prev) => {
+      if (!prev) return prev;
+      const updatedVulns = { ...prev.categorized_vulnerabilities };
+      for (const cat of Object.keys(updatedVulns)) {
+        if (updatedVulns[cat][fixedRule]) {
+          updatedVulns[cat][fixedRule] = updatedVulns[cat][fixedRule].filter(
+            (h) => h.subdomain !== fixedSubdomain,
+          );
+          if (updatedVulns[cat][fixedRule].length === 0) {
+            delete updatedVulns[cat][fixedRule];
+          }
         }
       }
-    }
-    return {
-      ...prev,
-      domain_score: newScore,
-      severity: newSeverity,
-      categorized_vulnerabilities: updatedVulns,
-    };
-  });
-};
+      return {
+        ...prev,
+        domain_score: newScore,
+        severity: newSeverity,
+        categorized_vulnerabilities: updatedVulns,
+      };
+    });
+  };
 
   if (loading) {
     return (
@@ -1474,13 +1221,13 @@ function ScanDetails() {
     severity: "info",
   };
 
-  const allCategories = [...vulnCategories, ipRepCategory, resolvedCategory];
-  const validNames      = allCategories.map((c) => c.name);
-  const resolvedActive  = validNames.includes(activeCatName) ? activeCatName : validNames[0];
-  const activeCat       = allCategories.find((c) => c.name === resolvedActive) || null;
+  const allCategories  = [...vulnCategories, ipRepCategory, resolvedCategory];
+  const validNames     = allCategories.map((c) => c.name);
+  const resolvedActive = validNames.includes(activeCatName) ? activeCatName : validNames[0];
+  const activeCat      = allCategories.find((c) => c.name === resolvedActive) || null;
 
-  const score  = data.domain_score ?? 0;
-  const grade  = getScoreGrade(score);
+  const score = data.domain_score ?? 0;
+  const grade = getScoreGrade(score);
 
   const rootDomain = (data.host?.domain || domain).toLowerCase();
   let rootIp = null;
@@ -1513,34 +1260,25 @@ function ScanDetails() {
   const handleDownloadReport = async () => {
     if (!data) return;
 
-      const [{ jsPDF }, { default: autoTable }] = await Promise.all([
-        import("jspdf"),
-        import("jspdf-autotable"),
-      ]);
-      const doc = new jsPDF();
-      
-      let currentY = 15;
-      
-      try {
-        const img = new Image();
-        img.src = isecurifyLogo;
-        await new Promise((resolve) => {
-          if (img.complete) {
-            resolve();
-          } else {
-            img.onload = resolve;
-            img.onerror = resolve;
-          }
-        });
-        if (img.width > 0) {
-          const targetWidth = 40;
-          const targetHeight = (img.height / img.width) * targetWidth;
-          doc.addImage(img, "PNG", 14, currentY, targetWidth, targetHeight);
-          currentY += targetHeight + 10;
-        }
-      } catch (e) {
-        console.error("Error loading logo:", e);
+    const doc = new jsPDF();
+    let currentY = 15;
+
+    try {
+      const img = new Image();
+      img.src = isecurifyLogo;
+      await new Promise((resolve) => {
+        if (img.complete) resolve();
+        else { img.onload = resolve; img.onerror = resolve; }
+      });
+      if (img.width > 0) {
+        const targetWidth  = 40;
+        const targetHeight = (img.height / img.width) * targetWidth;
+        doc.addImage(img, "PNG", 14, currentY, targetWidth, targetHeight);
+        currentY += targetHeight + 10;
       }
+    } catch (e) {
+      console.error("Error loading logo:", e);
+    }
 
     doc.setFontSize(22);
     doc.setTextColor(40);
@@ -1597,7 +1335,12 @@ function ScanDetails() {
           autoTable(doc, {
             startY: currentY,
             head: [["IP", "Abuse Score", "Total Reports", "ISP"]],
-            body: ipReps.map((r) => [r.ip, r.abuseConfidenceScore + "%", r.totalReports.toString(), r.isp || "N/A"]),
+            body: ipReps.map((r) => [
+              r.ip,
+              r.abuseConfidenceScore + "%",
+              r.totalReports.toString(),
+              r.isp || "N/A",
+            ]),
             theme: "grid",
             headStyles: { fillColor: [79, 70, 229] },
           });
@@ -1612,7 +1355,13 @@ function ScanDetails() {
           const rows = [];
           cat.findings.forEach((f) => {
             f.hosts.forEach((host) => {
-              rows.push([f.rule, host.subdomain || "—", host.ip || "—", host.port?.toString() || "—", f.severity.toUpperCase()]);
+              rows.push([
+                f.rule,
+                host.subdomain || "—",
+                host.ip || "—",
+                host.port?.toString() || "—",
+                f.severity.toUpperCase(),
+              ]);
             });
           });
           autoTable(doc, {
@@ -1630,16 +1379,10 @@ function ScanDetails() {
     doc.save(`${domain}-scan-report.pdf`);
   };
 
-  const showFixToast  = (payload) => setFixToast({ ...payload, id: Date.now() });
-  // ── Pass orgId + domain into modal so verify calls have the right context ──
-  const handleOpenGuide  = ({ rule, host }) =>
+  const showFixToast    = (payload) => setFixToast({ ...payload, id: Date.now() });
+  const handleOpenGuide = ({ rule, host }) =>
     setGuideModal({ rule, host, orgId, domain: data?.host?.domain || domain });
   const handleCloseGuide = () => setGuideModal(null);
-
-  // ── FIX 4: Report modal handlers — were missing entirely ──
-  const handleOpenReport  = ({ rule, host }) =>
-    setReportModal({ rule, host, domain: data?.host?.domain || domain });
-  const handleCloseReport = () => setReportModal(null);
 
   return (
     <div className="min-h-screen bg-surface relative">
@@ -1669,7 +1412,7 @@ function ScanDetails() {
         </div>
       )}
 
-      {/* Fix Guide Modal — now receives orgId + domain */}
+      {/* Fix Guide Modal */}
       {guideModal && (
         <FixGuideModal
           rule={guideModal.rule}
@@ -1678,24 +1421,6 @@ function ScanDetails() {
           domain={guideModal.domain}
           onClose={handleCloseGuide}
           onScoreUpdate={handleScoreUpdate}
-        />
-      )}
-
-      {/* ── FIX 5: Report Issue Modal render — was missing entirely ── */}
-      {reportModal && (
-        <ReportIssueModal
-          rule={reportModal.rule}
-          host={reportModal.host}
-          domain={reportModal.domain}
-          onClose={handleCloseReport}
-          onReported={() => {
-            setFixToast({
-              ok: true,
-              text: "Issue reported — the admin team will review it.",
-              id: Date.now(),
-            });
-            handleCloseReport();
-          }}
         />
       )}
 
@@ -1883,7 +1608,6 @@ function ScanDetails() {
                         categoryName={activeCat.name}
                         onFixToast={showFixToast}
                         onOpenGuide={handleOpenGuide}
-                        onOpenReport={handleOpenReport}  // ── FIX 5: was missing here ──
                       />
                     ))
                   )}
