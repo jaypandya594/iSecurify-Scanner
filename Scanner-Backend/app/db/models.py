@@ -370,10 +370,10 @@ class ResolvedFinding(Base):
     __table_args__ = (
         Index("idx_resolved_org", "org_id"),
         Index("idx_resolved_domain", "domain"),
-<<<<<<< Updated upstream
+
     )
-=======
-    )
+
+
 
 class ReportedIssue(Base):
     __tablename__ = "reported_issues"
@@ -397,4 +397,4 @@ class ReportedIssue(Base):
         Index("idx_reported_issue_domain", "domain"),
         Index("idx_reported_issue_status", "status"),
     )
->>>>>>> Stashed changes
+

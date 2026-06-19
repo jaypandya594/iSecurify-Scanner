@@ -344,8 +344,6 @@ export function getFixStatus(scanId, token) {
 }
 
 
-<<<<<<< Updated upstream
-=======
 
 export function verifyHeaderFix({ orgId, domain, subdomain, fixType, userId }) {
   return request("/fix/verify-header", {
@@ -419,4 +417,3 @@ export async function reportIssue(payload, token) {
   if (!res.ok) throw new Error("Failed to report issue");
   return res.json();
 }
->>>>>>> Stashed changes

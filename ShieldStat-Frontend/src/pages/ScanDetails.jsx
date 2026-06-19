@@ -1,9 +1,8 @@
-<<<<<<< Updated upstream
-  import React, { useEffect, useState } from "react";
-  import { useLocation, useSearchParams, Link } from "react-router-dom";
-  import { getScore, getIpReputation, getProfile, submitFix, getFixStatus  } from "../services/api";
-  import isecurifyLogo from "../assets/isecurify_logo.png";
-=======
+import React, { useEffect, useState } from "react";
+import { useLocation, useSearchParams, Link } from "react-router-dom";
+import { getScore, getIpReputation, getProfile, submitFix, getFixStatus  } from "../services/api";
+import isecurifyLogo from "../assets/isecurify_logo.png";
+
 import React, { useEffect, useState } from "react";
 import { useLocation, useSearchParams, Link } from "react-router-dom";
 import {
@@ -22,7 +21,6 @@ import {
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import isecurifyLogo from "../assets/isecurify_logo.png";
->>>>>>> Stashed changes
 
 // ─── Category icon mapping ────────────────────────────────────────────────────
 
@@ -274,9 +272,6 @@ const LANG_LABEL = {
   dns:        "DNS",
 };
 
-<<<<<<< Updated upstream
-// ─── Fix Guide Modal — fully dynamic ─────────────────────────────────────────
-=======
 // ─── Report Issue Modal ───────────────────────────────────────────────────────
 
 const ISSUE_TYPES = [
@@ -472,7 +467,6 @@ function ReportIssueModal({ rule, host, domain, onClose, onReported }) {
 }
 
 // ─── Fix Guide Modal ──────────────────────────────────────────────────────────
->>>>>>> Stashed changes
 
 function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
   const [guide, setGuide]           = useState(null);   // fetched from /fix/recommendation
@@ -1234,12 +1228,9 @@ function ScanDetails() {
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [fixToast, setFixToast]         = useState(null);
   const [resolvedRefresh, setResolvedRefresh] = useState(0);
-<<<<<<< Updated upstream
-=======
   const [guideModal, setGuideModal]       = useState(null);
   // ── FIX 3: Report modal state — was missing entirely ──
   const [reportModal, setReportModal]     = useState(null);
->>>>>>> Stashed changes
 
   // Fix guide modal state — now also carries orgId + domain
   const [guideModal, setGuideModal]     = useState(null); // { rule, host, orgId, domain }
