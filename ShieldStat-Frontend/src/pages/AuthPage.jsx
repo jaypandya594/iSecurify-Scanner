@@ -534,8 +534,29 @@ function AuthPage() {
 
                         {totpSetupUri ? (
                            <div className="flex justify-center py-4">
-                              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                 <QRCode value={totpSetupUri} size={180} />
+                              <div
+                                 className="inline-flex rounded-2xl border border-slate-200 p-3"
+                                 style={{
+                                    backgroundColor: "#ffffff",
+                                    boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.04)",
+                                    width: "fit-content"
+                                 }}
+                              >
+                                 <QRCode
+                                    value={totpSetupUri}
+                                    size={190}
+                                    level="H"
+                                    includeMargin={true}
+                                    renderAs="svg"
+                                    bgColor="#FFFFFF"
+                                    fgColor="#0F172A"
+                                    style={{
+                                       display: "block",
+                                       width: 190,
+                                       height: 190,
+                                       backgroundColor: "#ffffff"
+                                    }}
+                                 />
                               </div>
                            </div>
                         ) : (
