@@ -879,7 +879,7 @@ function AdminSubscription() {
                 <button
                   onClick={handleAssignPromo}
                   disabled={assigningPromoLoading}
-                  className="px-6 py-2 rounded-xl bg-gradient-to-br from-secondary to-secondary-dim text-white font-semibold text-sm shadow-lg shadow-secondary/20 hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 text-black"
+                  className="px-6 py-2 rounded-xl bg-gradient-to-br from-secondary to-secondary-dim font-semibold text-sm shadow-lg shadow-secondary/20 hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 text-black border-2 border-black"
                 >
                   {assigningPromoLoading ? (
                     <>
@@ -974,9 +974,10 @@ function AdminSubscription() {
                 </button>
                 <button
                   onClick={() => setShowAssignPromoModal(true)}
-                  className="w-full sm:w-auto px-6 h-12 bg-gradient-to-br from-secondary to-secondary-dim text-white rounded-xl font-semibold text-sm shadow-lg shadow-secondary/20 hover:opacity-90 transition-all flex items-center justify-center gap-2 text-black"
+                  className="w-full sm:w-auto px-6 h-12 bg-gradient-to-br from-secondary to-secondary-dim rounded-xl font-semibold text-sm shadow-md shadow-secondary/60 hover:opacity-90 transition-all flex items-center justify-center gap-2 text-black border border-gray-400"
                 >
-                  <span className="material-symbols-outlined text-sm text-black">person_add</span>
+                  <span className="material-symbols-outlined text-sm
+                  ">person_add</span>
                   Assign to User
                 </button>
               </div>
