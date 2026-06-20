@@ -941,8 +941,8 @@ function AdminSubscription() {
                               setShowStatusFilterDropdown(false);
                             }}
                             className={`px-3 py-2 min-w-[6rem] text-xs sm:text-sm transition-all rounded-full font-semibold flex items-center gap-2 ${statusFilter === option.label
-                                ? "bg-primary/20 text-primary border border-primary/30 shadow-sm"
-                                : "bg-surface-container text-on-surface hover:bg-surface-container/70 border border-surface-container/60"
+                              ? "bg-primary/20 text-primary border border-primary/30 shadow-sm"
+                              : "bg-surface-container text-on-surface hover:bg-surface-container/70 border border-surface-container/60"
                               }`}
                           >
                             <span className={`material-symbols-outlined text-sm ${statusFilter === option.label ? "text-primary" : "text-on-surface-variant"}`}>
@@ -1071,7 +1071,8 @@ function AdminSubscription() {
                           <td className="px-6 py-3 text-center">
                             <button
                               onClick={() => confirmDeletePromoCode(code.code)}
-                              className="px-3 py-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all flex items-center justify-center gap-1 text-xs font-semibold whitespace-nowrap mx-auto"
+                              disabled={code.is_used && !code.privilege_revoked}
+                              className={`px-3 py-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all flex items-center justify-center gap-1 text-xs font-semibold whitespace-nowrap mx-auto ${code.is_used && !code.privilege_revoked ? "opacity-50 cursor-not-allowed" : ""}`}
                             >
                               <span className="material-symbols-outlined text-sm">delete</span>
                               <span className="hidden sm:inline">Delete</span>
