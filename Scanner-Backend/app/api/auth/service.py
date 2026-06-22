@@ -2,6 +2,7 @@ import bcrypt
 import json
 import uuid
 import secrets
+import re
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 import os
@@ -57,6 +58,7 @@ PUBLIC_EMAIL_DOMAINS = {
 # ADMIN_TOTP_REQUIRED=false  → admins skip TOTP and get a JWT straight away
 # ADMIN_TOTP_REQUIRED=true   → admins must use TOTP like everyone else (default)
 ADMIN_TOTP_REQUIRED: bool = os.getenv("ADMIN_TOTP_REQUIRED", "true").strip().lower() in {"1", "true", "yes", "on"}
+PASSWORD_POLICY_REGEX = re.compile(r"^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$")
 
 
 def _normalize_datetime_to_utc(timestamp: datetime | None) -> datetime | None:
@@ -74,6 +76,13 @@ def hashPassword(password: str) -> str:
 
 def verifyPassword(entered_password: str, stored_hash: str) -> bool:
     return bcrypt.checkpw(entered_password.encode('utf-8'), stored_hash.encode('utf-8'))
+
+def validate_password_strength(password: str) -> None:
+    if not PASSWORD_POLICY_REGEX.match(password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters and include 1 uppercase letter, 1 number, and 1 special character."
+        )
 
 def _login_otp_key(email: str) -> str:
     return f"login_otp:{email.lower().strip()}"
@@ -189,6 +198,8 @@ def _personal_email_invitation_is_valid(email_lower: str, invite_token: str | No
 
 
 def register(email: str, password: str, domain: str, db: Session, invite_token: str | None = None):
+    validate_password_strength(password)
+
     email_lower = email.lower().strip()
     existing_user = db.query(User).filter(User.email == email_lower).first()
     if existing_user and existing_user.email_verified:
@@ -559,6 +570,8 @@ def send_forgot_password_otp(email: str, db: Session):
     return {"message": "OTP sent successfully"}
 
 def verify_otp_and_reset_password(email: str, otp: str, new_password: str, db: Session):
+    validate_password_strength(new_password)
+
     email_lower = email.lower()
     user = db.query(User).filter(User.email == email_lower).first()
 
@@ -590,6 +603,8 @@ def verify_otp_and_reset_password(email: str, otp: str, new_password: str, db: S
     return {"message": "Password reset successful"}
 
 def reset_password_with_old_password(user_id: str, old_password: str, new_password: str, db: Session):
+    validate_password_strength(new_password)
+
     user = db.query(User).filter(User.user_id == user_id).first()
 
     if not user:

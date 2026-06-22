@@ -34,6 +34,25 @@ function AuthPage() {
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState("");
    const [success, setSuccess] = useState("");
+
+   const PASSWORD_POLICY_MESSAGE = "Use at least 8 characters, including 1 uppercase letter, 1 number, and 1 special character.";
+   const PASSWORD_POLICY_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+   const validateStrongPassword = (value) => {
+      if (value.length < 8) {
+         return "Password must be at least 8 characters.";
+      }
+      if (!/[A-Z]/.test(value)) {
+         return "Password must include at least one uppercase letter.";
+      }
+      if (!/\d/.test(value)) {
+         return "Password must include at least one number.";
+      }
+      if (!/[^A-Za-z0-9]/.test(value)) {
+         return "Password must include at least one special character.";
+      }
+      return "";
+   };
    // Separate visibility toggles
    const [loginShowPassword, setLoginShowPassword] = useState(false);
    const [signupShowPassword, setSignupShowPassword] = useState(false);
@@ -144,8 +163,10 @@ function AuthPage() {
          setError("Passwords do not match");
          return;
       }
-      if (password.length < 6) {
-         setError("Password must be at least 6 characters");
+
+      const passwordError = validateStrongPassword(password);
+      if (passwordError) {
+         setError(passwordError);
          return;
       }
 
@@ -328,8 +349,9 @@ function AuthPage() {
          setError("Please fill all the fields");
          return;
       }
-      if (newPassword.length < 6) {
-         setError("Password must be at least 6 characters");
+      const passwordError = validateStrongPassword(newPassword);
+      if (passwordError) {
+         setError(passwordError);
          return;
       }
 
@@ -652,42 +674,45 @@ function AuthPage() {
 
 
 
-                        <div className="grid sm:grid-cols-2 gap-2">
-                           <div className="relative">
-                              <input
-                                 id="register-password"
-                                 type={signupShowPassword ? "text" : "password"}
-                                 placeholder="Password"
-                                 value={password}
-                                 onChange={(e) => setPassword(e.target.value)}
-                                 className="w-full p-2.5 pr-10 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
-                              />
-                              <button
-                                 type="button"
-                                 onClick={() => setSignupShowPassword(!signupShowPassword)}
-                                 className="absolute right-3 top-3 text-gray-500 hover:text-gray-700"
-                              >
-                                 {signupShowPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                              </button>
-                           </div>
+                        <div className="space-y-1.5">
+                           <div className="grid sm:grid-cols-2 gap-2">
+                              <div className="relative">
+                                 <input
+                                    id="register-password"
+                                    type={signupShowPassword ? "text" : "password"}
+                                    placeholder="Password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full p-2.5 pr-10 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
+                                 />
+                                 <button
+                                    type="button"
+                                    onClick={() => setSignupShowPassword(!signupShowPassword)}
+                                    className="absolute right-3 top-3 text-gray-500 hover:text-gray-700"
+                                 >
+                                    {signupShowPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                 </button>
+                              </div>
 
-                           <div className="relative">
-                              <input
-                                 id="register-confirm-password"
-                                 type={signupShowConfirmPassword ? "text" : "password"}
-                                 placeholder="Confirm Password"
-                                 value={confirmPassword}
-                                 onChange={(e) => setConfirmPassword(e.target.value)}
-                                 className="w-full p-2.5 pr-10 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
-                              />
-                              <button
-                                 type="button"
-                                 onClick={() => setSignupShowConfirmPassword(!signupShowConfirmPassword)}
-                                 className="absolute right-3 top-3 text-gray-500 hover:text-gray-700"
-                              >
-                                 {signupShowConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                              </button>
+                              <div className="relative">
+                                 <input
+                                    id="register-confirm-password"
+                                    type={signupShowConfirmPassword ? "text" : "password"}
+                                    placeholder="Confirm Password"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    className="w-full p-2.5 pr-10 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
+                                 />
+                                 <button
+                                    type="button"
+                                    onClick={() => setSignupShowConfirmPassword(!signupShowConfirmPassword)}
+                                    className="absolute right-3 top-3 text-gray-500 hover:text-gray-700"
+                                 >
+                                    {signupShowConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                 </button>
+                              </div>
                            </div>
+                           <p className="text-[11px] text-on-surface-variant">{PASSWORD_POLICY_MESSAGE}</p>
                         </div>
 
                         <div>
@@ -763,22 +788,25 @@ function AuthPage() {
                            className="w-full p-2.5 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40 tracking-widest text-center text-base"
                         />
 
-                        <div className="relative">
-                           <input
-                              id="reset-new-password"
-                              type={showNewPassword ? "text" : "password"}
-                              placeholder="New Password"
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              className="w-full p-2.5 pr-10 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
-                           />
-                           <button
-                              type="button"
-                              onClick={() => setShowNewPassword(!showNewPassword)}
-                              className="absolute right-3 top-3 text-gray-500 hover:text-gray-700"
-                           >
-                              {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                           </button>
+                        <div className="space-y-1.5">
+                           <div className="relative">
+                              <input
+                                 id="reset-new-password"
+                                 type={showNewPassword ? "text" : "password"}
+                                 placeholder="New Password"
+                                 value={newPassword}
+                                 onChange={(e) => setNewPassword(e.target.value)}
+                                 className="w-full p-2.5 pr-10 rounded-lg bg-surface-container-low outline-none focus:ring-2 focus:ring-primary/40"
+                              />
+                              <button
+                                 type="button"
+                                 onClick={() => setShowNewPassword(!showNewPassword)}
+                                 className="absolute right-3 top-3 text-gray-500 hover:text-gray-700"
+                              >
+                                 {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                              </button>
+                           </div>
+                           <p className="text-[11px] text-on-surface-variant">{PASSWORD_POLICY_MESSAGE}</p>
                         </div>
 
                         <button
