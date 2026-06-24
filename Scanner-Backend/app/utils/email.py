@@ -421,7 +421,7 @@ def send_account_locked_email(to_email: str, locked_until_iso: str, attempts: in
     <body style="font-family: Arial, sans-serif; color: #222;">
         <h2 style="color:#c0392b;">Security alert: Account temporarily locked</h2>
         <p>Your Domain Scanner account (<strong>{to_email}</strong>) was locked after <strong>{attempts}</strong> failed sign‑in attempts.</p>
-        <p>The account will remain locked until <strong>{lock_date} UTC</strong> (approximately {lockout_minutes} minutes).</p>
+        <p>The account will remain locked for </strong> ({lockout_minutes} minutes).</p>
         <p>If this wasn't you, please reset your password immediately or contact your administrator.</p>
         <p style="font-size:12px;color:#888;">If you did initiate these sign-in attempts, no further action is needed; the lock will expire automatically.</p>
     </body>
