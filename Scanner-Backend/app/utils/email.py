@@ -4,7 +4,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 SMTP_SERVER = os.getenv("SMTP_SERVER")
-SMTP_PORT = int(os.getenv("SMTP_PORT"))
+# Parse SMTP_PORT safely; default to 0 when not provided to avoid import-time errors.
+try:
+    SMTP_PORT = int(os.getenv("SMTP_PORT") or "0")
+except (TypeError, ValueError):
+    SMTP_PORT = 0
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 FRONTEND_URL = os.getenv("FRONTEND_URL")
@@ -91,7 +95,7 @@ def send_invite_email(to_email: str, plain_password: str, sender_email: str):
         server.sendmail(SMTP_USER, to_email, msg.as_string())
     finally:
         server.quit()
-    
+
     return True
 
 
@@ -372,6 +376,54 @@ def send_password_reset_otp_email(to_email: str, otp: str):
         <p style="font-size: 28px; font-weight: 700; letter-spacing: 2px;">{otp}</p>
         <p>This OTP expires in 10 minutes.</p>
         <p>If you did not request a password reset, you can ignore this email.</p>
+    </body>
+    </html>
+    """
+
+    msg.attach(MIMEText(plain_text, "plain"))
+    msg.attach(MIMEText(html_content, "html"))
+
+    server = None
+    try:
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_USER, to_email, msg.as_string())
+    finally:
+        if server:
+            server.quit()
+
+    return True
+
+
+def send_account_locked_email(to_email: str, locked_until_iso: str, attempts: int, lockout_minutes: int):
+    if not SMTP_USER or not SMTP_PASSWORD:
+        raise ValueError("SMTP_USER and SMTP_PASSWORD must be strictly configured in .env to dispatch emails.")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Security alert: Your Domain Scanner account was locked"
+    msg["From"] = f"Domain Scanner <{SMTP_USER}>"
+    msg["To"] = to_email
+
+    support_link = FRONTEND_URL.rstrip('/') if FRONTEND_URL else ""
+    lock_date = locked_until_iso.split("T")[0] if "T" in locked_until_iso else locked_until_iso
+    plain_text = (
+        f"Your Domain Scanner account was locked due to repeated failed sign-in attempts.\n"
+        f"Email: {to_email}\n"
+        f"Attempts: {attempts}\n"
+        f"Locked until (UTC): {lock_date}\n\n"
+        f"If this wasn't you, please reset your password or contact support: {support_link}"
+    )
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; color: #222;">
+        <h2 style="color:#c0392b;">Security alert: Account temporarily locked</h2>
+        <p>Your Domain Scanner account (<strong>{to_email}</strong>) was locked after <strong>{attempts}</strong> failed sign‑in attempts.</p>
+        <p>The account will remain locked until <strong>{lock_date} UTC</strong> (approximately {lockout_minutes} minutes).</p>
+        <p>If this wasn't you, please reset your password immediately or contact your administrator.</p>
+        <p style="font-size:12px;color:#888;">If you did initiate these sign-in attempts, no further action is needed; the lock will expire automatically.</p>
     </body>
     </html>
     """

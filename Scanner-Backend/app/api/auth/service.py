@@ -24,6 +24,7 @@ from app.utils.email import (
     send_invite_email,
     send_password_reset_otp_email,
     send_registration_verification_email,
+    send_account_locked_email,
 )
 import logging
 
@@ -184,14 +185,14 @@ def _personal_email_invitation_is_valid(email_lower: str, invite_token: str | No
         .filter(PersonalEmailInvitation.status.in_(["pending", "approved", "accepted"]))
         .first()
     )
-    
+
     if not invitation:
         return False
-    
+
     # If expires_at is None, treat it as valid (for backward compatibility with old invitations)
     if invitation.expires_at is None:
         return True
-    
+
     # Check if invitation hasn't expired
     expires_at_utc = _normalize_datetime_to_utc(invitation.expires_at)
     return expires_at_utc > now_utc if expires_at_utc else True
@@ -309,7 +310,7 @@ def verify_registration(token: str, db: Session):
 
     now_utc = datetime.now(timezone.utc)
     expires_at_utc = _normalize_datetime_to_utc(user.verification_expires_at)
-    
+
     if not expires_at_utc:
         raise HTTPException(status_code=400, detail="Invalid or expired verification link")
 
@@ -325,7 +326,7 @@ def verify_registration(token: str, db: Session):
 
     try:
         _finalize_owner_registration(user, domain, db)
-        
+
         # Mark the personal email invitation as accepted if one exists
         invitation = (
             db.query(PersonalEmailInvitation)
@@ -335,7 +336,7 @@ def verify_registration(token: str, db: Session):
         if invitation:
             invitation.status = "accepted"
             db.add(invitation)
-        
+
         db.commit()
         logger.info(f"User verified: {email_lower}")
     except Exception as err:
@@ -399,6 +400,17 @@ def login_user(email: str, password: str, db: Session):
                     },
                 )
             )
+            # Send a security alert email to the user informing them of the lock
+            try:
+                send_account_locked_email(
+                    to_email=email_lower,
+                    locked_until_iso=user.locked_until.isoformat(),
+                    attempts=user.failed_login_attempts,
+                    lockout_minutes=LOCKOUT_DURATION_MINUTES,
+                )
+                logger.info(f"Account lock email sent to {email_lower}")
+            except Exception as email_err:
+                logger.warning(f"Failed to send account lock email to {email_lower}: {email_err}")
             db.commit()
             raise HTTPException(
                 status_code=403,
@@ -729,7 +741,7 @@ def _revoke_expired_promo_privileges(db: Session, org_id: str | None = None) -> 
         query = query.filter(PromoCode.used_by.in_(user_ids)) if user_ids else query.filter(False)
 
     all_promos = query.all()
-    
+
     # Filter for expired promos in Python to handle timezone-aware/naive comparison
     expired_promos = [
         promo for promo in all_promos
