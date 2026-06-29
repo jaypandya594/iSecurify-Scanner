@@ -3,8 +3,9 @@ from pydantic import BaseModel, EmailStr
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
-    domain: str
+    domain: str | None = None
     name: str | None = None
+    invite_token: str | None = None
     captcha_token: str | None = None
 
 class LoginRequest(BaseModel):
@@ -41,6 +42,20 @@ class OrgMembersRequest(BaseModel):
 class AddDomainRequest(BaseModel):
     domain: str
 
-
 class VerifyEmailRequest(BaseModel):
     token: str
+
+# ── NEW: TOTP schemas ─────────────────────────────────────────────────────────
+
+class TotpSetupRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class TotpVerifyRequest(BaseModel):
+    email: EmailStr
+    password: str
+    totp_code: str
+
+class TotpResetRequest(BaseModel):
+    email: EmailStr
+    otp: str

@@ -6,6 +6,14 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 import enum
 
+
+class InvitationStatus(str, enum.Enum):
+    """Status for user invitations"""
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    EXPIRED = "expired"
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -17,19 +25,28 @@ class Organization(Base):
 class User(Base):
     __tablename__ = "users"
 
-    user_id = Column(String(36), primary_key=True)
-    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=True)
-    email = Column(String(255), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False, default="owner")
-    created_at = Column(TIMESTAMP, server_default=func.now())
-    email_verified = Column(Boolean, nullable=False, server_default="true")
-    failed_login_attempts = Column(Integer, nullable=False, default=0)
-    last_failed_login_at = Column(TIMESTAMP, nullable=True)
-    locked_until = Column(TIMESTAMP, nullable=True)
-    verification_token = Column(String(255), unique=True, nullable=True)
-    verification_expires_at = Column(TIMESTAMP, nullable=True)
+    user_id                   = Column(String(36), primary_key=True)
+    org_id                    = Column(String(36), ForeignKey("organizations.org_id"), nullable=True)
+    email                     = Column(String(255), unique=True, nullable=False)
+    password                  = Column(String(255), nullable=False)
+    role                      = Column(String(20), nullable=False, default="owner")
+    created_at                = Column(TIMESTAMP, server_default=func.now())
+    email_verified            = Column(Boolean, nullable=False, server_default="true")
+    failed_login_attempts     = Column(Integer, nullable=False, default=0)
+    last_failed_login_at      = Column(TIMESTAMP, nullable=True)
+    locked_until              = Column(TIMESTAMP, nullable=True)
+    verification_token        = Column(String(255), unique=True, nullable=True)
+    verification_expires_at   = Column(TIMESTAMP, nullable=True)
     pending_registration_domain = Column(Text, nullable=True)
+
+    # ── NEW: TOTP columns ─────────────────────────────────────────────────────
+    totp_secret     = Column(String(64), nullable=True)
+    # NULL  → user has never set up Google Authenticator
+    # value → the Base32 secret tied to their Authenticator app entry
+
+    is_totp_enabled = Column(Boolean, nullable=False, server_default="false")
+    # False → setup not yet confirmed (secret might exist but not verified)
+    # True  → user successfully verified a code at least once; TOTP is active
 
 class Invitation(Base):
     __tablename__ = "invitations"
@@ -41,6 +58,21 @@ class Invitation(Base):
     status = Column(String(20), nullable=False, default="pending")
     invited_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
     expires_at = Column(TIMESTAMP, nullable=False)
+
+
+class PersonalEmailInvitation(Base):
+    __tablename__ = "personal_email_invitations"
+
+    invitation_id = Column(String(36), primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    token = Column(String(255), unique=True, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    approved_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+    approved_at = Column(TIMESTAMP, nullable=True)
+    expires_at = Column(TIMESTAMP, nullable=True)
+    notes = Column(Text, nullable=True)
+
 
 class PasswordResetOTP(Base):
     __tablename__ = "password_reset_otps"
@@ -58,6 +90,8 @@ class PromoCode(Base):
     is_used = Column(Boolean, default=False, nullable=False)
     used_at = Column(TIMESTAMP, nullable=True)
     used_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    expires_at = Column(TIMESTAMP, nullable=True)
+    privilege_revoked = Column(Boolean, default=False, nullable=False)
 
 
 class SubscriptionPlan(Base):
@@ -270,4 +304,28 @@ class ResolvedFinding(Base):
     __table_args__ = (
         Index("idx_resolved_org", "org_id"),
         Index("idx_resolved_domain", "domain"),
+    )
+class ReportedIssue(Base):
+    __tablename__ = "reported_issues"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(String(36), ForeignKey("organizations.org_id"), nullable=True)
+    domain = Column(Text, nullable=False)
+    subdomain = Column(String(255), nullable=True)
+    rule = Column(String(255), nullable=False)
+    severity = Column(String(50), nullable=True)
+    issue_type = Column(String(100), nullable=False)
+    message = Column(Text, nullable=True)
+    status = Column(String(50), nullable=False, default="open")
+    ref_id = Column(String(20), unique=True, nullable=False)
+    reported_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+    reviewed_at = Column(TIMESTAMP, nullable=True)
+    reviewed_by = Column(String(36), ForeignKey("users.user_id"), nullable=True)
+    admin_note = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_reportedissue_org", "org_id"),
+        Index("idx_reportedissue_domain", "domain"),
+        Index("idx_reportedissue_status", "status"),
+        Index("idx_reportedissue_ref", "ref_id"),
     )

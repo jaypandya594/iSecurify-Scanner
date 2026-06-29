@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, EmailStr
 
 
@@ -6,6 +7,25 @@ class BlacklistEmailRequest(BaseModel):
 
 
 class CreateAdminRequest(BaseModel):
+    email: EmailStr
+
+
+class PersonalEmailApprovalRequest(BaseModel):
+    email: EmailStr
+    notes: str | None = None
+
+
+class DeleteUserRequest(BaseModel):
+    user_id: str
+    admin_password: str
+
+
+class GeneratePromoCodeRequest(BaseModel):
+    expires_at: datetime
+
+
+class AssignPromoCodeRequest(BaseModel):
+    promo_code: str
     email: EmailStr
 
 

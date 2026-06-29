@@ -1,22 +1,28 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.admin.schemas import BlacklistEmailRequest, CreateAdminRequest
+from app.api.admin.schemas import AssignPromoCodeRequest, BlacklistEmailRequest, CreateAdminRequest, GeneratePromoCodeRequest, PersonalEmailApprovalRequest
 from app.api.admin.service import (
+    assign_promo_code_to_user,
     block_email,
+    create_personal_email_invitation,
     create_subscription_plan,
+    delete_admin,
     delete_promo_code,
+    disable_promo_code,
     delete_subscription_plan,
     generate_promo_code,
     get_audit_logs,
     get_blacklisted_emails,
     get_promo_codes,
+    list_personal_email_invitations,
     get_scan_summaries,
     get_security_alerts,
     get_subscription_plans,
     get_total_scans,
     get_users_by_org,
     provision_admin_account,
+    revoke_personal_email_invitation,
     unblock_email,
     update_subscription_plan,
 )
@@ -53,11 +59,18 @@ def get_public_ip(request: Request) -> str | None:
 
 @router.post("/generate-promo")
 def generate_promo(
+    req: GeneratePromoCodeRequest,
     request: Request,
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ):
-    return generate_promo_code(db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
+    return generate_promo_code(
+        db,
+        expires_at=req.expires_at,
+        current_admin=current_admin,
+        ip_address=get_request_ip(request),
+        public_ip=get_public_ip(request),
+    )
 
 
 @router.get("/promo-codes")
@@ -66,6 +79,24 @@ def list_promo_codes(
     _current_admin: User = Depends(require_admin),
 ):
     return get_promo_codes(db)
+
+
+@router.post("/promo-codes/assign")
+def assign_promo(
+    req: AssignPromoCodeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Assign a promo code directly to a user, applying the benefit immediately."""
+    return assign_promo_code_to_user(
+        promo_code=req.promo_code,
+        email=req.email,
+        db=db,
+        current_admin=current_admin,
+        ip_address=get_request_ip(request),
+        public_ip=get_public_ip(request),
+    )
 
 
 @router.delete("/promo-codes/{code}/delete")
@@ -77,6 +108,39 @@ def delete_promo(
 ):
     """Delete a promo code (both used and unused codes can be deleted)"""
     return delete_promo_code(code, db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
+
+
+@router.put("/promo-codes/{code}/disable")
+def disable_promo(
+    code: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Disable a claimed promo code and revoke its privileges"""
+    return disable_promo_code(code, db, current_admin=current_admin, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
+
+
+@router.post("/personal-email/approve")
+def approve_personal_email(
+    req: PersonalEmailApprovalRequest,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    return create_personal_email_invitation(req.email, current_admin, db, notes=req.notes)
+
+
+@router.get("/personal-email")
+def list_personal_email(
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(require_admin),
+):
+    return list_personal_email_invitations(db)
+
+
+@router.delete("/personal-email/{email}")
+def revoke_personal_email(email: str, db: Session = Depends(get_db), _current_admin: User = Depends(require_admin)):
+    return revoke_personal_email_invitation(email, db)
 
 
 @router.get("/users")
@@ -95,6 +159,17 @@ def create_admin(
     current_admin: User = Depends(require_admin),
 ):
     return provision_admin_account(req.email, current_admin, db, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
+
+
+@router.delete("/admin/{email}")
+def delete_admin_account(
+    email: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Delete an admin account by email. Cannot delete the default admin or yourself."""
+    return delete_admin(email, current_admin, db, ip_address=get_request_ip(request), public_ip=get_public_ip(request))
 
 
 @router.post("/blacklist/block")

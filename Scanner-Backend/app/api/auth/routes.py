@@ -4,14 +4,17 @@ from app.api.auth.schemas import (
     RedeemPromoRequest, ForgotPasswordOtpRequest,
     ForgotPasswordResetRequest, ResetPasswordRequest,
     AddDomainRequest, VerifyEmailRequest,
+    TotpSetupRequest, TotpVerifyRequest, TotpResetRequest,
 )
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.api.auth.service import (
     login_user, register, verify_registration, invite_member,
-    get_members, redeem_promo_code, add_domain,
+    get_members, delete_member, redeem_promo_code, add_domain,
     send_forgot_password_otp, verify_otp_and_reset_password,
     reset_password_with_old_password,
+    setup_user_totp, verify_user_totp, reset_user_totp,
+    _revoke_expired_promo_privileges,
 )
 from app.core.middleware import require_owner, protect
 from app.db.models import User, Organization
@@ -26,12 +29,18 @@ async def register_route(req: RegisterRequest, db: Session = Depends(get_db)):
     email = req.email
     password = req.password
     domain = req.domain
+    invite_token = req.invite_token
 
-    if not email or not password or not domain or not domain.strip():
-        raise HTTPException(status_code=400, detail="Please fill all the fields")
+    # Validate required fields
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+
+    # Domain is only required for regular signups (no invitation)
+    if not invite_token and (not domain or not domain.strip()):
+        raise HTTPException(status_code=400, detail="Domain is required for new organization signup")
 
     try:
-        return register(email, password, domain, db)
+        return register(email, password, domain, db, invite_token=invite_token)
     except HTTPException:
         raise
     except Exception as e:
@@ -66,8 +75,9 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
         return login_user(email, password, db)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
 
 @router.post('/forgot-password')
 def forgot_password(req: ForgotPasswordOtpRequest, db: Session = Depends(get_db)):
@@ -135,12 +145,32 @@ def list_members(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+@router.delete('/members/{user_id}')
+def delete_member_route(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_owner)
+):
+    try:
+        return delete_member(current_user, user_id, db)
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
 @router.get('/profile')
 def get_profile(
     current_user: User = Depends(protect),
     db: Session = Depends(get_db)
 ):
     org = db.query(Organization).filter(Organization.org_id == current_user.org_id).first()
+
+    # Check and revoke any expired promo privileges
+    if org:
+        _revoke_expired_promo_privileges(db, org.org_id)
+        db.refresh(org)
+
     return {
         "user_id": current_user.user_id,
         "org_id": current_user.org_id,
@@ -175,5 +205,38 @@ def redeem_promo(
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.post('/totp/setup')
+def totp_setup_route(req: TotpSetupRequest, db: Session = Depends(get_db)):
+    try:
+        return setup_user_totp(req.email, req.password, db)
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.post('/totp/verify')
+def totp_verify_route(req: TotpVerifyRequest, db: Session = Depends(get_db)):
+    try:
+        return verify_user_totp(req.email, req.password, req.totp_code, db)
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.post('/totp/reset')
+def totp_reset_route(req: TotpResetRequest, db: Session = Depends(get_db)):
+    try:
+        return reset_user_totp(req.email, req.otp, db)
+    except HTTPException:
+        raise
+    except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Internal Server Error")

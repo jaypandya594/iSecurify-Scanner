@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import logo from "../assets/logo.svg";
+import logoWhite from "../assets/iSecurify Logo - White - Transparent.png";
 import { getProfile } from "../services/api";
 
-function Navbar({ onOpenSidebar }) {
+function Navbar({ onOpenSidebar, isDarkMode }) {
   const [availableSlots, setAvailableSlots] = useState(0);
 
   useEffect(() => {
@@ -15,7 +16,7 @@ function Navbar({ onOpenSidebar }) {
         const uniqueDomains = new Set(domains.map(d => d.trim().toLowerCase()).filter(Boolean));
         const slots = Math.max(0, (profile?.max_domains || 0) - uniqueDomains.size);
         setAvailableSlots(slots);
-      } catch (err) {}
+      } catch (err) { }
     };
 
     fetchProfile();
@@ -41,9 +42,10 @@ function Navbar({ onOpenSidebar }) {
 
       <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
         <img
-          src={logo}
+          src={isDarkMode ? logoWhite : logo}
           alt="iSecurify"
-          className="h-7 w-auto object-contain dark:invert dark:brightness-200"
+          className="max-h-7 w-auto object-contain"
+          style={isDarkMode ? { height: "2.4rem" } : undefined}
         />
         {/* <span className="text-sm font-semibold tracking-wide text-slate-700 dark:text-slate-200">iSecurify</span> */}
       </div>

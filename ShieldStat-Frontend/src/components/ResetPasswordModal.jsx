@@ -9,6 +9,24 @@ export default function ResetPasswordModal({ isOpen, onClose }) {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const PASSWORD_POLICY_MESSAGE = "Use at least 8 characters, including 1 uppercase letter, 1 number, and 1 special character.";
+
+  const validateStrongPassword = (value) => {
+    if (value.length < 8) {
+      return "Password must be at least 8 characters.";
+    }
+    if (!/[A-Z]/.test(value)) {
+      return "Password must include at least one uppercase letter.";
+    }
+    if (!/\d/.test(value)) {
+      return "Password must include at least one number.";
+    }
+    if (!/[^A-Za-z0-9]/.test(value)) {
+      return "Password must include at least one special character.";
+    }
+    return "";
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
@@ -23,6 +41,12 @@ export default function ResetPasswordModal({ isOpen, onClose }) {
 
     if (newPassword !== confirmPassword) {
       setError("New passwords do not match");
+      return;
+    }
+
+    const passwordError = validateStrongPassword(newPassword);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -94,6 +118,7 @@ export default function ResetPasswordModal({ isOpen, onClose }) {
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Enter new password"
             />
+            <p className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">{PASSWORD_POLICY_MESSAGE}</p>
           </div>
 
           <div>

@@ -11,6 +11,7 @@ import {
   getFixRecommendation,
   saveResolvedFinding,
   getResolvedFindings,
+  reportIssue,
 } from "../services/api";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -257,6 +258,197 @@ const LANG_LABEL = {
   dns:        "DNS",
 };
 
+// ─── Report Issue Modal ───────────────────────────────────────────────────────
+
+const ISSUE_TYPES = [
+  "Result is incorrect",
+  "Already fixed",
+  "False positive",
+  "Severity seems wrong",
+  "Other",
+];
+
+function ReportIssueModal({ rule, host, domain, orgId, onClose, onReported }) {
+  const [issueType, setIssueType] = useState(ISSUE_TYPES[0]);
+  const [message, setMessage]     = useState("");
+  const [status, setStatus]       = useState("idle");
+  const [refId, setRefId]         = useState("");
+
+  const subdomain = host?.subdomain || host;
+
+  const handleSubmit = async () => {
+    setStatus("loading");
+    try {
+      const res = await reportIssue({
+        domain,
+        subdomain,
+        rule,
+        severity: host?.severity,
+        issueType,
+        message,
+        orgId,
+      });
+      setRefId(res?.ref_id || "—");
+      setStatus("success");
+      onReported?.();
+    } catch {
+      setStatus("idle");
+    }
+  };
+
+  const handleBackdrop = (e) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[400] flex items-center justify-center bg-black/50 p-4"
+      onClick={handleBackdrop}
+    >
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500">
+            <span
+              className="material-symbols-outlined text-[18px] text-white"
+              style={{ fontVariationSettings: `"FILL" 1` }}
+            >
+              flag
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-extrabold text-slate-900 leading-tight">
+              Report an issue
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Sent directly to the admin team for review
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+            aria-label="Close"
+          >
+            <span className="material-symbols-outlined text-[18px] leading-none">close</span>
+          </button>
+        </div>
+
+        {status === "success" ? (
+          /* ── Success state ── */
+          <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+              <span
+                className="material-symbols-outlined text-[26px] text-emerald-600"
+                style={{ fontVariationSettings: `"FILL" 1` }}
+              >
+                check_circle
+              </span>
+            </div>
+            <div>
+              <p className="text-[15px] font-extrabold text-slate-900">Report sent!</p>
+              <p className="text-[13px] text-slate-500 mt-1 leading-relaxed">
+                The admin team will review{" "}
+                <strong className="text-slate-700">{rule}</strong> on{" "}
+                <strong className="text-slate-700">{subdomain}</strong> and follow up.
+              </p>
+            </div>
+            <span className="font-mono text-[12px] bg-slate-100 px-3 py-1.5 rounded-lg text-slate-500">
+              {refId}
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2 rounded-lg bg-slate-100 text-slate-700 text-[13px] font-semibold hover:bg-slate-200 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* ── Body ── */}
+            <div className="px-5 py-5 space-y-4">
+              {/* Context pill */}
+              <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <span className="material-symbols-outlined text-[15px] text-amber-600">
+                  info
+                </span>
+                <span className="text-[12px] text-amber-800 truncate">
+                  <strong>{rule}</strong> · {subdomain}
+                </span>
+              </div>
+
+              {/* Issue type chips */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+                  What's the issue?
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {ISSUE_TYPES.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setIssueType(t)}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all ${
+                        issueType === t
+                          ? "bg-indigo-600 text-white border-indigo-600"
+                          : "bg-white text-slate-600 border-slate-300 hover:border-indigo-300 hover:text-indigo-600"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Message */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+                  Message{" "}
+                  <span className="normal-case font-normal">(optional)</span>
+                </p>
+                <textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="e.g. We deployed this fix last week, scanner may not have picked it up yet..."
+                  className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none min-h-[80px]"
+                />
+              </div>
+            </div>
+
+            {/* ── Footer ── */}
+            <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="material-symbols-outlined text-[13px]">lock</span>
+                Only visible to admins
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-[13px] font-semibold hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={status === "loading"}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-[13px] font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[14px]">send</span>
+                  {status === "loading" ? "Sending…" : "Send to admin"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Fix Guide Modal ──────────────────────────────────────────────────────────
 
 function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
@@ -497,7 +689,7 @@ function FixGuideModal({ rule, host, orgId, domain, onClose, onScoreUpdate }) {
 
 // ─── Host row ─────────────────────────────────────────────────────────────────
 
-function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGuide }) {
+function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGuide, onOpenReport }) {
   const hostCfg = getSeverityConfig(host.severity);
   const [fixing, setFixing] = useState(false);
 
@@ -591,6 +783,11 @@ function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGui
     onOpenGuide?.({ rule, host });
   };
 
+  const handleReportClick = (e) => {
+    e.stopPropagation();
+    onOpenReport?.({ rule, host });
+  };
+
   return (
     <div
       className={`flex flex-col md:flex-row md:items-center gap-3 md:gap-6 px-4 py-3 rounded-lg border ${hostCfg.detailBorder} ${hostCfg.detailBg} text-sm w-full`}
@@ -638,6 +835,15 @@ function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGui
         >
           {host.severity || "Info"}
         </span>
+        <button
+          type="button"
+          onClick={handleReportClick}
+          title="Report an issue with this finding"
+          aria-label="Report an issue"
+          className={`flex items-center justify-center rounded-lg p-1 transition-colors hover:bg-black/5 ${hostCfg.subColor}`}
+        >
+          <span className="material-symbols-outlined text-[16px] leading-none">flag</span>
+        </button>
       </div>
     </div>
   );
@@ -645,7 +851,7 @@ function HostRow({ host, rule, token, orgId, categoryName, onFixToast, onOpenGui
 
 // ─── Vulnerability finding card ───────────────────────────────────────────────
 
-function FindingCard({ finding, token, orgId, categoryName, onFixToast, onOpenGuide }) {
+function FindingCard({ finding, token, orgId, categoryName, onFixToast, onOpenGuide, onOpenReport }) {
   const [expanded, setExpanded] = useState(false);
   const cfg = getSeverityConfig(finding.severity);
   const label = finding.severity.charAt(0).toUpperCase() + finding.severity.slice(1);
@@ -709,6 +915,7 @@ function FindingCard({ finding, token, orgId, categoryName, onFixToast, onOpenGu
                 categoryName={categoryName}
                 onFixToast={onFixToast}
                 onOpenGuide={onOpenGuide}
+                onOpenReport={onOpenReport}
               />
             ))}
         </div>
@@ -985,6 +1192,7 @@ function ScanDetails() {
   const [fixToast, setFixToast]           = useState(null);
   const [resolvedRefresh, setResolvedRefresh] = useState(0);
   const [guideModal, setGuideModal]       = useState(null);
+  const [reportModal, setReportModal]     = useState(null);
 
   const domain          = normalizeDomain(searchParams.get("domain") || knownDomains[0] || "");
   const preloadedResult = location?.state?.preloadedResult || null;
@@ -1383,6 +1591,11 @@ function ScanDetails() {
   const handleOpenGuide = ({ rule, host }) =>
     setGuideModal({ rule, host, orgId, domain: data?.host?.domain || domain });
   const handleCloseGuide = () => setGuideModal(null);
+  const handleOpenReport = ({ rule, host }) =>
+    setReportModal({ rule, host, orgId, domain: data?.host?.domain || domain });
+  const handleCloseReport = () => setReportModal(null);
+  const handleReported    = () =>
+    setFixToast({ ok: true, text: "Issue reported — the admin team has been notified.", id: Date.now() });
 
   return (
     <div className="min-h-screen bg-surface relative">
@@ -1421,6 +1634,18 @@ function ScanDetails() {
           domain={guideModal.domain}
           onClose={handleCloseGuide}
           onScoreUpdate={handleScoreUpdate}
+        />
+      )}
+
+      {/* Report Issue Modal */}
+      {reportModal && (
+        <ReportIssueModal
+          rule={reportModal.rule}
+          host={reportModal.host}
+          orgId={reportModal.orgId}
+          domain={reportModal.domain}
+          onClose={handleCloseReport}
+          onReported={() => { handleReported(); handleCloseReport(); }}
         />
       )}
 
@@ -1608,6 +1833,7 @@ function ScanDetails() {
                         categoryName={activeCat.name}
                         onFixToast={showFixToast}
                         onOpenGuide={handleOpenGuide}
+                        onOpenReport={handleOpenReport}
                       />
                     ))
                   )}
