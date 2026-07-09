@@ -36,7 +36,7 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - postgres
+      
       - redis
     networks:
       - scanner-network
