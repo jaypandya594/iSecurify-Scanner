@@ -57,7 +57,7 @@ services:
 
 networks:
   scanner-network:
-    external: bridge
+    driver: bridge
 
 volumes:
   postgres_data:
