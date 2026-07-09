@@ -13,8 +13,8 @@ services:
   backend:
     build: .
     container_name: scanner-backend
-    ports:
-      - "8000:8000"
+    expose:
+       - "8000"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_HOST=${REDIS_HOST}
