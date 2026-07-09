@@ -7,6 +7,9 @@ load_dotenv()
 def init_db():
     DATABASE_URL = os.getenv("DATABASE_URL")
 
+    if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
     db_name = DATABASE_URL.rsplit('/', 1)[-1]
     base_url = DATABASE_URL.rsplit('/', 1)[0] + '/postgres'
 
