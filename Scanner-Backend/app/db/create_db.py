@@ -8,10 +8,10 @@ def init_db():
     DATABASE_URL = os.getenv("DATABASE_URL")
 
     if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set")
+        raise ValueError("DATABASE_URL environment variable is not set")
     
     if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
     db_name = DATABASE_URL.rsplit('/', 1)[-1]
     base_url = DATABASE_URL.rsplit('/', 1)[0] + '/postgres'
