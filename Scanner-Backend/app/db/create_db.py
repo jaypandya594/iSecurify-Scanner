@@ -1,6 +1,7 @@
 import psycopg
 import os
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 load_dotenv()
 
