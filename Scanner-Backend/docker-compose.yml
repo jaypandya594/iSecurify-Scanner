@@ -45,6 +45,8 @@ services:
 networks:
   scanner-network:
     driver: bridge
-
+  
+  coolify:
+    external: true
 volumes:
   postgres_data:
