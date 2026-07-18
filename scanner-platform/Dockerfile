@@ -20,6 +20,7 @@ RUN go install -v github.com/projectdiscovery/tlsx/cmd/tlsx@latest
 
 COPY go.mod go.sum ./
 RUN go mod download
+copy . .
 
 
 CMD ["go", "run", "cmd/worker/main.go"]
