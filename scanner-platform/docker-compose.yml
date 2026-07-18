@@ -11,8 +11,8 @@ services:
       - REDIS_ADDR=redis:6379
     deploy:
       replicas: 1
-    volumes:
-      - .:/app
+  #  volumes:
+   #   - .:/app
 
   worker-fix:
     build:
@@ -26,8 +26,8 @@ services:
       - REDIS_ADDR=redis:6379
     deploy:
       replicas: 1
-    volumes:
-      - .:/app
+    #volumes:
+    #  - .:/app
   
     
 networks:
