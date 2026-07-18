@@ -32,4 +32,4 @@ services:
     
 networks:
   scanner-network:
-    external: true
+    driver: bridge
