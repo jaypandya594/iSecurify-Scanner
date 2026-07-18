@@ -6,6 +6,7 @@ services:
     container_name: scanner-worker-main
     networks:
       - scanner-network
+      - fzfv2h0tffhzk43szv9o4e8d 
     environment:
       - WORKER_TYPE=main
       - REDIS_ADDR=redis:6379
@@ -21,6 +22,7 @@ services:
     container_name: scanner-worker-fix
     networks:
       - scanner-network
+      - fzfv2h0tffhzk43szv9o4e8d 
     environment:
       - WORKER_TYPE=fix
       - REDIS_ADDR=redis:6379
@@ -33,3 +35,5 @@ services:
 networks:
   scanner-network:
     driver: bridge
+  fzfv2h0tffhzk43szv9o4e8d:
+    external: true
